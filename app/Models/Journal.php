@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Database\Eloquent\Model;
 
@@ -95,7 +96,7 @@ class Journal extends Model
     {
         // Ambil nilai MAX(RIGHT(invoice, 7)) berdasarkan kondisi user dan tanggal
         $lastInvoice = DB::table($table)
-            ->where('user_id', auth()->user()->id)
+            ->where('user_id', auth()->id)
             ->whereDate('created_at', today())
             ->where($condition)
             ->max(DB::raw('RIGHT(invoice, 7)')); // Ambil nomor invoice terakhir (7 digit)
@@ -104,7 +105,7 @@ class Journal extends Model
         $kd = $lastInvoice ? (int)$lastInvoice + 1 : 1; // Jika ada invoice, tambahkan 1, jika tidak mulai dari 1
 
         // Kembalikan format invoice
-        return $prefix . '.' . now()->format('dmY') . '.' . auth()->user()->id . '.' . str_pad($kd, 7, '0', STR_PAD_LEFT);
+        return $prefix . '.' . now()->format('dmY') . '.' . auth()->id . '.' . str_pad($kd, 7, '0', STR_PAD_LEFT);
     }
 
     public function sales_journal()
