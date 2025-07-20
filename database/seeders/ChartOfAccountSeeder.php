@@ -15,7 +15,7 @@ class ChartOfAccountSeeder extends Seeder
     {
         $acc_coa = [
             ['acc_code' => '10100-001', 'acc_name' => 'Kas Kecil', 'account_id' => 1, 'st_balance' => 0, 'warehouse_id' => 1, 'is_locked' => true],
-            ['acc_code' => '10100-002', 'acc_name' => 'Kas Besar Admin (Dana Belum Disetor)', 'account_id' => 1, 'st_balance' => 0, 'warehouse_id' => 1, 'is_locked' => false],
+            ['acc_code' => '10100-002', 'acc_name' => 'Kas Besar Admin (Dana Belum Disetor)', 'account_id' => 1, 'st_balance' => 0, 'warehouse_id' => 1, 'is_locked' => true],
             ['acc_code' => '10200-001', 'acc_name' => 'Bank BCA (Headquarter)', 'account_id' => 2, 'st_balance' => 0, 'warehouse_id' => 1, 'is_locked' => false],
             ['acc_code' => '10200-002', 'acc_name' => 'Bank MANDIRI (Headquarter)', 'account_id' => 2, 'st_balance' => 0, 'warehouse_id' => 1, 'is_locked' => false],
             ['acc_code' => '10200-003', 'acc_name' => 'Bank BRI (Headquarter)', 'account_id' => 2, 'st_balance' => 0, 'warehouse_id' => 1, 'is_locked' => false],
@@ -25,8 +25,6 @@ class ChartOfAccountSeeder extends Seeder
             ['acc_code' => '10400-003', 'acc_name' => 'Piutang Service Belum Diambil', 'account_id' => 4, 'st_balance' => 0, 'warehouse_id' => null, 'is_locked' => true],
             ['acc_code' => '10600-001', 'acc_name' => 'Persediaan Barang', 'account_id' => 6, 'st_balance' => 0, 'warehouse_id' => null, 'is_locked' => true],
             ['acc_code' => '20100-001', 'acc_name' => 'Hutang Usaha', 'account_id' => 19, 'st_balance' => 0, 'warehouse_id' => null, 'is_locked' => true],
-            ['acc_code' => '20100-002', 'acc_name' => 'Deposit Customer', 'account_id' => 19, 'st_balance' => 0, 'warehouse_id' => null, 'is_locked' => false],
-            ['acc_code' => '20100-003', 'acc_name' => 'Fee Customer (Markup)', 'account_id' => 19, 'st_balance' => 0, 'warehouse_id' => null, 'is_locked' => false],
             ['acc_code' => '20200-001', 'acc_name' => 'Hutang Gaji, THR Dan Upah', 'account_id' => 20, 'st_balance' => 0, 'warehouse_id' => null, 'is_locked' => true],
             ['acc_code' => '30100-001', 'acc_name' => 'Modal (Ekuitas)', 'account_id' => 26, 'st_balance' => 0, 'warehouse_id' => null, 'is_locked' => true],
             ['acc_code' => '30100-002', 'acc_name' => 'Laba Rugi', 'account_id' => 26, 'st_balance' => 0, 'warehouse_id' => null, 'is_locked' => true],

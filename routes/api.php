@@ -8,9 +8,10 @@ use App\Http\Controllers\ProductController;
 use App\Http\Controllers\WarehouseController;
 use App\Http\Controllers\ChartOfAccountController;
 use App\Http\Controllers\ProductCategoryController;
+use App\Http\Controllers\ServiceOrderController;
 
 Route::middleware(['auth:sanctum'])->get('/user', function (Request $request) {
-    return $request->user();
+    return $request->user()->load('role');
 });
 
 Route::group(['middleware' => ['auth:sanctum']], function () {
@@ -48,4 +49,7 @@ Route::group(['middleware' => ['auth:sanctum']], function () {
     Route::get('get-all-warehouses', [WarehouseController::class, 'getAllWarehouses']);
 
     //end warehouse
+
+    //order
+    Route::apiResource('orders', ServiceOrderController::class);
 });

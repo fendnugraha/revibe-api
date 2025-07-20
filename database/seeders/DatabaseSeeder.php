@@ -62,15 +62,17 @@ class DatabaseSeeder extends Seeder
             'Description' => 'General Customer',
         ]);
 
-        ProductCategory::create([
-            'name' => 'General',
-            'prefix' => 'GNR',
+        ProductCategory::insert([
+            ['id' => 1, 'name' => 'General', 'code_prefix' => 'GNR'],
+            ['id' => 2, 'name' => 'Sparepart', 'code_prefix' => 'SPR'],
+            ['id' => 3, 'name' => 'Aksesoris',  'code_prefix' => 'ACC'],
+            ['id' => 4, 'name' => 'Service',    'code_prefix' => 'SRV'],
         ]);
 
         $this->call([
             AccountSeeder::class,
             ChartOfAccountSeeder::class,
-            // ProductSeeder::class
+            ProductSeeder::class
         ]);
     }
 }

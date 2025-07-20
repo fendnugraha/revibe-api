@@ -14,14 +14,14 @@ return new class extends Migration
         Schema::create('service_orders', function (Blueprint $table) {
             $table->id();
             $table->dateTime('date_issued');
-            $table->dateTime('date_finished');
-            $table->string('invoice', 60)->unique();
+            $table->string('invoice', 60)->nullable()->unique();
             $table->string('order_number', 60)->unique();
-            $table->string('phone_number', 60);
+            $table->string('phone_number', 15);
             $table->string('phone_type', 160);
             $table->string('description', 160);
-            $table->enum('status', ['Pending', 'In Progress', 'Finished'])->default('Pending');
+            $table->enum('status', ['Pending', 'In Progress', 'Finished', 'Completed', 'Cancelled', 'Rejected'])->default('Pending');
             $table->foreignId('technician_id')->nullable()->constrained('users'); // atau 'technicians'
+            $table->foreignId('warehouse_id')->constrained('warehouses');
             $table->foreignId('user_id')->constrained()->index();
             $table->timestamps();
         });

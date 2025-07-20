@@ -13,14 +13,14 @@ return new class extends Migration
     {
         Schema::create('products', function (Blueprint $table) {
             $table->id();
-            $table->string('code', 60)->unique()->nullable();
-            $table->string('name', 160)->unique();
-            $table->decimal('cost', 10, 2);
-            $table->decimal('price', 10, 2);
-            $table->integer('sold')->default(0);
-            $table->integer('init_stock')->default(0);
-            $table->integer('end_stock')->default(0);
-            $table->string('category', 60)->nullable();
+            $table->string('code', 60)->unique()->nullable();     // SKU / kode produk
+            $table->string('name', 160)->unique();                // Nama produk
+            $table->decimal('cost', 15, 2);                       // HPP
+            $table->decimal('price', 15, 2);                      // Harga jual
+            $table->foreignId('category_id')->index()->default(1);         // Nama kategori (opsional)
+
+            $table->enum('type', ['unit', 'service'])->default('unit'); // Tambahan: tipe produk
+
             $table->timestamps();
         });
     }
