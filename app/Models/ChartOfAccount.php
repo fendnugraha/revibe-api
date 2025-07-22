@@ -20,15 +20,18 @@ class ChartOfAccount extends Model
         'st_balance' => 'integer',
     ];
 
-    public function debt()
+    public function entries()
     {
-        return $this->hasMany(Journal::class, 'debt_code', 'acc_code');
+        return $this->hasMany(JournalEntry::class);
     }
 
-    public function cred()
+    public function entriesWithJournal()
     {
-        return $this->hasMany(Journal::class, 'cred_code', 'acc_code');
+        return $this->hasMany(JournalEntry::class, 'chart_of_account_id')
+            ->join('journals', 'journal_entries.journal_id', '=', 'journals.id')
+            ->select('journal_entries.*', 'journals.date_issued');
     }
+
 
     public function acc_code($account_id)
     {

@@ -20,9 +20,7 @@ return new class extends Migration
             // Metadata (boleh disesuaikan)
             $table->string('transaction_type', 60)->nullable();
             $table->string('finance_type', 30)->nullable();
-            $table->integer('payment_status')->nullable();
             $table->integer('payment_nth')->nullable();
-            $table->foreignId('product_id')->nullable()->index();
             $table->foreignId('user_id')->constrained()->onDelete('restrict');
             $table->foreignId('warehouse_id')->constrained()->onDelete('restrict');
             $table->string('serial_number', 255)->nullable();

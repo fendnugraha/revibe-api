@@ -14,16 +14,12 @@ return new class extends Migration
         Schema::create('chart_of_accounts', function (Blueprint $table) {
             $table->id();
             $table->string('acc_code', 30)->unique()->index();
-            $table->string('acc_name', 100)->unique()->index();
-
-            // Jika account_id adalah foreign key yang mengarah ke tabel accounts
-            $table->foreignId('account_id')->constrained()->onDelete('cascade'); // Misalnya mengarah ke tabel accounts
-
-            // Jika warehouse_id mengarah ke tabel warehouses, gunakan foreignId dan bukan integer
-            $table->foreignId('warehouse_id')->nullable()->constrained('warehouses')->onDelete('set null'); // Mengubah ke nullable dan set null jika warehouse dihapus
-
+            $table->string('acc_name', 100)->index();
+            $table->foreignId('account_id')->constrained()->onDelete('cascade'); // e.g., 'Cash', 'Bank', etc.
+            $table->foreignId('warehouse_id')->nullable()->constrained('warehouses')->onDelete('set null');
             $table->bigInteger('st_balance')->default(0);
             $table->boolean('is_locked')->default(false);
+            $table->boolean('is_primary_cash')->default(false); // ✅ akun kas utama?
             $table->timestamps();
         });
     }

@@ -227,56 +227,49 @@ class ChartOfAccountController extends Controller
 
     public function profitLossReport()
     {
-        $journal = new Journal();
-        // $journal->profitLossCount('0000-00-00', $endDate);
+        $startDate = now()->startOfDay();
+        $endDate = now()->endOfDay();
 
-        $transactions = $journal->with(['debt', 'cred'])
-            ->selectRaw('debt_code, cred_code, SUM(amount) as total')
-            ->whereBetween('date_issued', [$this->startDate, $this->endDate])
-            ->groupBy('debt_code', 'cred_code')
-            ->get();
+        // Ambil seluruh akun beserta entry yang sesuai periode
+        $accounts = ChartOfAccount::with(['entriesWithJournal' => function ($query) use ($startDate, $endDate) {
+            $query->whereBetween('date_issued', [$startDate, $endDate]);
+        }])->get();
 
-        $chartOfAccounts = ChartOfAccount::with(['account'])->get();
+        // Kelompokkan berdasarkan account_id parent (1 = Pendapatan, 2 = HPP, 3 = Biaya)
+        $revenue = $accounts->where('account_id', 1);
+        $cost    = $accounts->where('account_id', 2);
+        $expense = $accounts->where('account_id', 3);
 
-        foreach ($chartOfAccounts as $value) {
-            $debit = $transactions->where('debt_code', $value->acc_code)->sum('total');
-            $credit = $transactions->where('cred_code', $value->acc_code)->sum('total');
+        // Fungsi bantu untuk hitung saldo dari relasi entries
+        $formatAccounts = function ($accounts) {
+            return $accounts->map(function ($acc) {
+                $balance = $acc->entries->sum('credit') - $acc->entries->sum('debit');
+                return [
+                    'acc_name' => $acc->acc_name,
+                    'balance' => $balance
+                ];
+            })->values()->toArray();
+        };
 
-            $value->balance = ($value->account->status == "D") ? ($value->st_balance + $debit - $credit) : ($value->st_balance + $credit - $debit);
-        }
-
-        $revenue = $chartOfAccounts->whereIn('account_id', \range(27, 30))->groupBy('account_id');
-        $cost = $chartOfAccounts->whereIn('account_id', \range(31, 32))->groupBy('account_id');
-        $expense = $chartOfAccounts->whereIn('account_id', \range(33, 45))->groupBy('account_id');
+        // Total masing-masing
+        $revenueTotal = $revenue->sum(fn($acc) => $acc->entries->sum('credit') - $acc->entries->sum('debit'));
+        $costTotal    = $cost->sum(fn($acc) => $acc->entries->sum('debit') - $acc->entries->sum('credit'));
+        $expenseTotal = $expense->sum(fn($acc) => $acc->entries->sum('debit') - $acc->entries->sum('credit'));
 
         $profitLoss = [
             'revenue' => [
-                'total' => $revenue->flatten()->sum('balance'),
-                'accounts' => $revenue->map(function ($r) {
-                    return [
-                        'acc_name' => $r->first()->account->name,
-                        'balance' => intval($r->sum('balance'))
-                    ];
-                })->toArray()
+                'total' => $revenueTotal,
+                'accounts' => $formatAccounts($revenue),
             ],
             'cost' => [
-                'total' => $cost->flatten()->sum('balance'),
-                'accounts' => $cost->map(function ($c) {
-                    return [
-                        'acc_name' => $c->first()->account->name,
-                        'balance' => intval($c->sum('balance'))
-                    ];
-                })->toArray()
+                'total' => $costTotal,
+                'accounts' => $formatAccounts($cost),
             ],
             'expense' => [
-                'total' => $expense->flatten()->sum('balance'),
-                'accounts' => $expense->map(function ($e) {
-                    return [
-                        'acc_name' => $e->first()->account->name,
-                        'balance' => intval($e->sum('balance'))
-                    ];
-                })->toArray()
-            ]
+                'total' => $expenseTotal,
+                'accounts' => $formatAccounts($expense),
+            ],
+            'net_profit' => $revenueTotal - $costTotal - $expenseTotal,
         ];
 
         return response()->json([
@@ -285,6 +278,7 @@ class ChartOfAccountController extends Controller
             'data' => $profitLoss
         ]);
     }
+
 
     public function addCashAndBankToWarehouse($warehouse, $id)
     {

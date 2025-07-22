@@ -14,7 +14,7 @@ return new class extends Migration
         Schema::create('journal_entries', function (Blueprint $table) {
             $table->id();
             $table->foreignId('journal_id')->constrained('journals')->onDelete('cascade');
-            $table->foreignId('account_id')->constrained('chart_of_accounts')->onDelete('restrict');
+            $table->foreignId('chart_of_account_id')->constrained('chart_of_accounts')->onDelete('restrict');
             $table->decimal('debit', 15, 2)->default(0);
             $table->decimal('credit', 15, 2)->default(0);
             $table->timestamps();

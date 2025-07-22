@@ -10,7 +10,12 @@ class Warehouse extends Model
 
     public function ChartOfAccount()
     {
-        return $this->belongsTo(ChartOfAccount::class);
+        return $this->hasMany(ChartOfAccount::class);
+    }
+
+    public function primaryCashAccount()
+    {
+        return $this->hasOne(ChartOfAccount::class)->where('is_primary_cash', true);
     }
 
     public function user()

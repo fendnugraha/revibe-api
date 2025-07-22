@@ -92,31 +92,65 @@ class Journal extends Model
         return $this->hasMany(Transaction::class, 'invoice', 'invoice');
     }
 
+    public function entries()
+    {
+        return $this->hasMany(JournalEntry::class);
+    }
+
     public static function generateJournalInvoice($prefix, $table, $condition = [])
     {
-        // Ambil nilai MAX(RIGHT(invoice, 7)) berdasarkan kondisi user dan tanggal
-        $lastInvoice = DB::table($table)
-            ->where('user_id', auth()->id)
-            ->whereDate('created_at', today())
-            ->where($condition)
-            ->max(DB::raw('RIGHT(invoice, 7)')); // Ambil nomor invoice terakhir (7 digit)
+        $userId = auth()->user()->id;
+        $today = now()->toDateString();
 
-        // Tentukan nomor urut invoice
-        $kd = $lastInvoice ? (int)$lastInvoice + 1 : 1; // Jika ada invoice, tambahkan 1, jika tidak mulai dari 1
+        return DB::transaction(function () use ($prefix, $table, $condition, $userId, $today) {
+            $lastInvoice = DB::table($table)
+                ->lockForUpdate()
+                ->where($condition)
+                ->where('user_id', $userId)
+                ->whereDate('created_at', $today)
+                ->max(DB::raw('CAST(SUBSTRING_INDEX(invoice, ".", -1) AS UNSIGNED)')); // Ambil angka terakhir
 
-        // Kembalikan format invoice
-        return $prefix . '.' . now()->format('dmY') . '.' . auth()->id . '.' . str_pad($kd, 7, '0', STR_PAD_LEFT);
+            $nextNumber = $lastInvoice ? $lastInvoice + 1 : 1;
+
+            $newInvoice = implode('.', [
+                $prefix,                    // Contoh: JRN
+                now()->format('dmY'),      // Tanggal: 22072025
+                $userId,                   // User ID
+                str_pad($nextNumber, 7, '0', STR_PAD_LEFT) // Nomor: 0000001
+            ]);
+
+            return $newInvoice;
+        });
     }
 
-    public function sales_journal()
+    public static function sales_journal()
     {
-        return $this->generateJournalInvoice('SO.BK', 'transactions', [['transaction_type', '=', 'Sales']]);
+        return self::generateJournalInvoice('SO.BK', 'transactions', [['transaction_type', '=', 'Sales'], ['satatus', '=', 3]]);
     }
 
-    public function purchase_journal()
+    public static function order_journal()
+    {
+        $userId = auth()->user()->id;
+        $today = now()->toDateString();
+
+        $lastInvoice = Transaction::where(function ($query) {
+            $query->where('transaction_type', 'Sales')
+                ->orWhere('transaction_type', 'Order');
+        })
+            ->where('user_id', $userId)
+            ->whereDate('created_at', $today)
+            ->max(DB::raw('CAST(SUBSTRING_INDEX(invoice, ".", -1) AS UNSIGNED)')); // Ambil angka terakhir
+
+        $nextNumber = $lastInvoice ? $lastInvoice + 1 : 1;
+
+        return 'RO.BK' . now()->format('dmY') . '.' . $userId . '.' . str_pad($nextNumber, 7, '0', STR_PAD_LEFT);
+    }
+
+
+    public static function purchase_journal()
     {
         // Untuk purchase journal, kita menambahkan kondisi agar hanya mengembalikan yang quantity > 0
-        return $this->generateJournalInvoice('PO.BK', 'transactions', [['quantity', '>', 0], ['transaction_type', '=', 'Purchase']]);
+        return self::generateJournalInvoice('PO.BK', 'transactions', [['quantity', '>', 0], ['transaction_type', '=', 'Purchase']]);
     }
 
     public static function endBalanceBetweenDate($account_code, $start_date, $end_date)

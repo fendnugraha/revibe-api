@@ -12,12 +12,11 @@ return new class extends Migration
     public function up(): void
     {
         Schema::create('warehouses', function (Blueprint $table) {
-            $table->id(); // Tipe data otomatis unsignedBigInteger
-            $table->string('code', 3)->unique(); // Kode warehouse
-            $table->string('name', 30)->unique(); // Nama warehouse
-            $table->string('address'); // Alamat warehouse
-            $table->foreignId('chart_of_account_id'); // Relasi ke chart_of_accounts
-            $table->integer('status')->default(1); // Status dengan nilai default 1
+            $table->id();
+            $table->string('code', 3)->unique();
+            $table->string('name', 30)->unique();
+            $table->string('address');
+            $table->integer('status')->default(1);
             $table->timestamps();
         });
     }

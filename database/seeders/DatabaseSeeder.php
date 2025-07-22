@@ -39,7 +39,6 @@ class DatabaseSeeder extends Seeder
             'code' => 'HQT',
             'name' => 'HEADQUARTER',
             'address' => 'Bandung, Jawa Barat, ID, 40375',
-            'chart_of_account_id' => 1
         ]);
 
         UserRole::create([

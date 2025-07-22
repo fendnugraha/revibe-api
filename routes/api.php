@@ -34,7 +34,9 @@ Route::group(['middleware' => ['auth:sanctum']], function () {
     Route::apiResource('accounts', ChartOfAccountController::class);
     Route::get('category-accounts', [ChartOfAccountController::class, 'getAccountCategories']);
     Route::get('get-account-by-account-id', [ChartOfAccountController::class, 'getAccountByAccountId']);
-
+    Route::get('balance-sheet-report/{startDate}/{endDate}', [ChartOfAccountController::class, 'balanceSheetReport']);
+    Route::get('profit-loss-report/{startDate}/{endDate}', [ChartOfAccountController::class, 'profitLossReport']);
+    Route::get('cash-flow-report/{startDate}/{endDate}', [ChartOfAccountController::class, 'cashFlowReport']);
     //end account area
 
     //contacts
@@ -52,4 +54,10 @@ Route::group(['middleware' => ['auth:sanctum']], function () {
 
     //order
     Route::apiResource('orders', ServiceOrderController::class);
+    Route::get('get-all-orders', [ServiceOrderController::class, 'getAllOrders']);
+    Route::get('get-order-by-order-number/{order_number}', [ServiceOrderController::class, 'GetOrderByOrderNumber']);
+    Route::post('update-order-status', [ServiceOrderController::class, 'updateOrderStatus']);
+    Route::post('make-payment', [ServiceOrderController::class, 'makePayment']);
+    Route::post('add-parts-to-order', [ServiceOrderController::class, 'addPartsToOrder']);
+    //end order
 });

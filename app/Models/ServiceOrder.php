@@ -28,6 +28,11 @@ class ServiceOrder extends Model
         return $this->belongsTo(Warehouse::class);
     }
 
+    public function transaction()
+    {
+        return $this->hasMany(Transaction::class, 'invoice', 'invoice');
+    }
+
     public function contact()
     {
         return $this->belongsTo(Contact::class, 'phone_number', 'phone_number');
