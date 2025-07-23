@@ -19,7 +19,7 @@ return new class extends Migration
             $table->string('description', 160);
             $table->decimal('bill_amount', 15, 2);
             $table->decimal('payment_amount', 15, 2);
-            $table->integer('payment_status');
+            $table->enum('status', ['Unpaid', 'Paid', 'Partially Paid'])->default('Unpaid');
             $table->integer('payment_nth');
             $table->enum('finance_type', ['Payable', 'Receivable']); // ✅ diperbaiki
 
