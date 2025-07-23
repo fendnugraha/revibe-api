@@ -230,47 +230,47 @@ class ChartOfAccountController extends Controller
         $startDate = now()->startOfDay();
         $endDate = now()->endOfDay();
 
-        // Ambil seluruh akun beserta entry yang sesuai periode
         $accounts = ChartOfAccount::with(['entriesWithJournal' => function ($query) use ($startDate, $endDate) {
-            $query->whereBetween('date_issued', [$startDate, $endDate]);
-        }])->get();
+            $query->whereBetween('journals.date_issued', [$startDate, $endDate]);
+        }, 'account'])->get();
 
-        // Kelompokkan berdasarkan account_id parent (1 = Pendapatan, 2 = HPP, 3 = Biaya)
-        $revenue = $accounts->where('account_id', 1);
-        $cost    = $accounts->where('account_id', 2);
-        $expense = $accounts->where('account_id', 3);
+        $revenue = $accounts->whereIn('account_id', \range(27, 30))->groupBy('account_id');
+        $cost = $accounts->whereIn('account_id', \range(31, 32))->groupBy('account_id');
+        $expense = $accounts->whereIn('account_id', \range(33, 45))->groupBy('account_id');
 
-        // Fungsi bantu untuk hitung saldo dari relasi entries
-        $formatAccounts = function ($accounts) {
-            return $accounts->map(function ($acc) {
-                $balance = $acc->entries->sum('credit') - $acc->entries->sum('debit');
-                return [
-                    'acc_name' => $acc->acc_name,
-                    'balance' => $balance
-                ];
-            })->values()->toArray();
-        };
+        function calculateBalance($acc)
+        {
+            $entries = collect($acc['entriesWithJournal']);
+            return $acc->account->status == "D"
+                ? $entries->sum('debit') - $entries->sum('credit')
+                : $entries->sum('credit') - $entries->sum('debit');
+        }
 
-        // Total masing-masing
-        $revenueTotal = $revenue->sum(fn($acc) => $acc->entries->sum('credit') - $acc->entries->sum('debit'));
-        $costTotal    = $cost->sum(fn($acc) => $acc->entries->sum('debit') - $acc->entries->sum('credit'));
-        $expenseTotal = $expense->sum(fn($acc) => $acc->entries->sum('debit') - $acc->entries->sum('credit'));
+        $profitLoss = collect([
+            'revenue' => $revenue,
+            'cost' => $cost,
+            'expense' => $expense,
+        ])->map(function ($group) {
+            return [
+                'total' => $group->flatten(1)->sum(fn($acc) => calculateBalance($acc)),
+                'accounts' => $group->map(function ($accounts) {
+                    $first = $accounts[0];
+                    $accGroupName = $first['account']['name'];
 
-        $profitLoss = [
-            'revenue' => [
-                'total' => $revenueTotal,
-                'accounts' => $formatAccounts($revenue),
-            ],
-            'cost' => [
-                'total' => $costTotal,
-                'accounts' => $formatAccounts($cost),
-            ],
-            'expense' => [
-                'total' => $expenseTotal,
-                'accounts' => $formatAccounts($expense),
-            ],
-            'net_profit' => $revenueTotal - $costTotal - $expenseTotal,
-        ];
+                    return [
+                        'acc_name' => $accGroupName,
+                        'balance' => collect($accounts)->sum(fn($acc) => calculateBalance($acc)),
+                        'coa' => collect($accounts)->map(function ($acc) {
+                            return [
+                                'acc_name' => $acc['acc_name'],
+                                'balance' => calculateBalance($acc),
+                            ];
+                        })->values()->toArray(),
+                    ];
+                })->values()->toArray(),
+            ];
+        })->toArray();
+
 
         return response()->json([
             'success' => true,
