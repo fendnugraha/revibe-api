@@ -6,9 +6,10 @@ use App\Http\Controllers\UserController;
 use App\Http\Controllers\ContactController;
 use App\Http\Controllers\ProductController;
 use App\Http\Controllers\WarehouseController;
+use App\Http\Controllers\TransactionController;
+use App\Http\Controllers\ServiceOrderController;
 use App\Http\Controllers\ChartOfAccountController;
 use App\Http\Controllers\ProductCategoryController;
-use App\Http\Controllers\ServiceOrderController;
 
 Route::middleware(['auth:sanctum'])->get('/user', function (Request $request) {
     return $request->user()->load('role');
@@ -60,4 +61,8 @@ Route::group(['middleware' => ['auth:sanctum']], function () {
     Route::post('make-payment', [ServiceOrderController::class, 'makePayment']);
     Route::post('add-parts-to-order', [ServiceOrderController::class, 'addPartsToOrder']);
     //end order
+
+    //transactions
+    Route::apiResource('transactions', TransactionController::class);
+    Route::get('get-trx-by-warehouse/{warehouse}/{startDate}/{endDate}', [TransactionController::class, 'getTrxByWarehouse']);
 });

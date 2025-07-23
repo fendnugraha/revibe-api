@@ -22,7 +22,7 @@ class TransactionController extends Controller
      */
     public function index()
     {
-        $transactions = Transaction::with(['product', 'contact'])->orderBy('created_at', 'desc')->paginate(10);
+        $transactions = Transaction::with(['product', 'contact'])->orderBy('created_at', 'desc')->get();
 
         return new DataResource($transactions, true, "Successfully fetched transactions");
     }

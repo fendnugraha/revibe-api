@@ -19,6 +19,16 @@ class Finance extends Model
         return $this->belongsTo(ChartOfAccount::class, 'account_code', 'id');
     }
 
+    public function transaction()
+    {
+        return $this->belongsTo(Transaction::class, 'invoice', 'invoice');
+    }
+
+    public function journal()
+    {
+        return $this->belongsTo(Journal::class);
+    }
+
     public function generateFinanceInvoice($contact_id, $type)
     {
         $prefix = $type == 'Payable' ? 'PY' : 'RC';

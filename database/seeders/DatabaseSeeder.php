@@ -29,7 +29,7 @@ class DatabaseSeeder extends Seeder
         ]);
 
         User::factory()->create([
-            'name' => 'fend nugraha',
+            'name' => 'LactobaCylus',
             'email' => 'fend@jour.com',
             'email_verified_at' => now(),
             'password' => 'user123',

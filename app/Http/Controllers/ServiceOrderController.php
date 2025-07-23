@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Contact;
+use App\Models\Finance;
 use App\Models\Journal;
 use App\Models\Product;
 use App\Models\Transaction;
@@ -122,6 +123,7 @@ class ServiceOrderController extends Controller
             ->where('order_number', $order_number)
             ->first();
 
+
         return new DataResource($order, true, "Successfully fetched service order");
     }
 
@@ -169,6 +171,23 @@ class ServiceOrderController extends Controller
                     'user_id' => auth()->user()->id,
                     'warehouse_id' => auth()->user()->role->warehouse_id
                 ]);
+
+                if ($request->paymentMethod == "credit") {
+                    Finance::create([
+                        'date_issued' => $request->date_issued ?? now(),
+                        'due_date' => $request->date_issued ?? now()->addDays(30),
+                        'invoice' => $order->invoice,
+                        'description' => 'Pembayaran Service Order ' . $order->order_number,
+                        'bill_amount' => -$totalPrice,
+                        'payment_amount' => 0,
+                        'payment_nth' => 0,
+                        'payment_status' => 0,
+                        'finance_type' => 'Receivable',
+                        'contact_id' => $order->contact->id,
+                        'user_id' => auth()->user()->id,
+                        'journal_id' => $journal->id
+                    ]);
+                }
 
                 $journal->entries()->createMany([
                     [
@@ -229,7 +248,9 @@ class ServiceOrderController extends Controller
             return response()->json(['success' => false, 'message' => 'Service order not found'], 404);
         }
 
-        $newinvoice = Journal::order_journal();
+        $transactionExists = Transaction::where('invoice', $order->invoice)->exists();
+
+        $newinvoice = $transactionExists ? $order->invoice : Journal::order_journal();
         $warehouseId = auth()->user()->role->warehouse_id;
         $userId = auth()->user()->id;
 
