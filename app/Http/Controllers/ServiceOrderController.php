@@ -136,13 +136,27 @@ class ServiceOrderController extends Controller
 
         $order = ServiceOrder::where('order_number', $request->order_number)->first();
 
-        if ($order) {
+        if ($order->invoice && $order->status == 'In Progress') {
+            return response()->json(['success' => false, 'message' => 'Pembatalan gagal, sudah ada transaksi dan pergantian sparepart'], 400);
+        }
+
+        if ($order->status == 'In Progress' && $request->status == 'Take Over' && $order->technician_id != auth()->user()->id) {
+            $order->technician_id = auth()->user()->id;
+            $order->save();
+            return response()->json(['success' => true, 'message' => 'Order ' . $order->order_number . ' taking over by ' . auth()->user()->name . '', 'data' => $order], 200);
+        }
+
+        if ($request->status == 'Take Over' && $order->technician_id === auth()->user()->id) {
+            return response()->json(['success' => false, 'message' => 'Tidak boleh mengambil order sendiri'], 404);
+        }
+
+        if ($order && $order->status != $request->status) {
             $order->status = $request->status;
             $order->technician_id = auth()->user()->id;
             $order->save();
             return response()->json(['success' => true, 'message' => 'Order status updated to ' . $request->status . '', 'data' => $order], 200);
         } else {
-            return response()->json(['success' => false, 'message' => 'Service order not found'], 404);
+            return response()->json(['success' => false, 'message' => 'Failed to update order status'], 404);
         }
     }
 
@@ -221,6 +235,7 @@ class ServiceOrderController extends Controller
                 ]);
 
                 $order->status = "Completed";
+                $order->payment_method = 'Cash';
                 $order->save();
 
                 DB::commit();

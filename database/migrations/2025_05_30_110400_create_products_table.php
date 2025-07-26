@@ -19,7 +19,7 @@ return new class extends Migration
             $table->decimal('price', 15, 2);                      // Harga jual
             $table->foreignId('category_id')->index()->default(1);         // Nama kategori (opsional)
 
-            $table->enum('type', ['unit', 'service'])->default('unit'); // Tambahan: tipe produk
+            $table->boolean('is_service')->default(false); // Tambahan: tipe produk
 
             $table->timestamps();
         });

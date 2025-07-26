@@ -16,6 +16,7 @@ return new class extends Migration
             $table->foreignId('warehouse_id')->constrained('warehouses')->onDelete('restrict');
             $table->foreignId('product_id')->constrained('products')->onDelete('restrict');
             $table->integer('init_stock')->default(0);
+            $table->decimal('init_cost', 15, 2)->default(0);
             $table->integer('current_stock')->default(0);
             $table->date('balance_date')->nullable();
             $table->timestamps();

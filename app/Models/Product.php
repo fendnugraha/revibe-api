@@ -9,6 +9,11 @@ class Product extends Model
 {
     protected $guarded = ['id', 'created_at', 'updated_at'];
 
+    protected $casts = [
+        'transactions_sum_quantity' => 'float',
+        'transactions_sum_cost' => 'float',
+        'transactions_sum_price' => 'float'
+    ];
     protected static function booted(): void
     {
         static::creating(function ($product) {
@@ -33,21 +38,14 @@ class Product extends Model
 
     public static function updateStock($id, $newQty, $warehouse_id)
     {
-        $product = Product::find($id);
-        $product_log = Transaction::where('product_id', $product->id)->sum('quantity');
-        $end_Stock = $product->end_stock + $newQty;
-        Product::where('id', $product->id)->update([
-            'end_Stock' => $end_Stock,
-        ]);
-
-        $updateWarehouseStock = WarehouseStock::where('warehouse_id', $warehouse_id)->where('product_id', $product->id)->first();
+        $updateWarehouseStock = WarehouseStock::where('warehouse_id', $warehouse_id)->where('product_id', $id)->first();
         if ($updateWarehouseStock) {
             $updateWarehouseStock->current_stock += $newQty;
             $updateWarehouseStock->save();
         } else {
             $warehouseStock = new WarehouseStock();
             $warehouseStock->warehouse_id = $warehouse_id;
-            $warehouseStock->product_id = $product->id;
+            $warehouseStock->product_id = $id;
             $warehouseStock->current_stock = $newQty;
             $warehouseStock->save();
         }
@@ -137,5 +135,15 @@ class Product extends Model
     public function transactions()
     {
         return $this->hasMany(Transaction::class);
+    }
+
+    public function category()
+    {
+        return $this->belongsTo(ProductCategory::class);
+    }
+
+    public function warehouseStock()
+    {
+        return $this->hasMany(WarehouseStock::class);
     }
 }

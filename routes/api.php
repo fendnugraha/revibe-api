@@ -12,7 +12,7 @@ use App\Http\Controllers\ChartOfAccountController;
 use App\Http\Controllers\ProductCategoryController;
 
 Route::middleware(['auth:sanctum'])->get('/user', function (Request $request) {
-    return $request->user()->load('role');
+    return $request->user()->load(['role.warehouse']);
 });
 
 Route::group(['middleware' => ['auth:sanctum']], function () {
@@ -28,6 +28,7 @@ Route::group(['middleware' => ['auth:sanctum']], function () {
     Route::apiResource('products', ProductController::class);
     Route::apiResource('product-categories', ProductCategoryController::class);
     Route::get('get-all-products', [ProductController::class, 'getAllProducts']);
+    Route::get('get-all-products-by-warehouse/{warehouse}/{endDate}', [ProductController::class, 'getAllProductsByWarehouse']);
     //end product area
 
     //account area
@@ -65,4 +66,7 @@ Route::group(['middleware' => ['auth:sanctum']], function () {
     //transactions
     Route::apiResource('transactions', TransactionController::class);
     Route::get('get-trx-by-warehouse/{warehouse}/{startDate}/{endDate}', [TransactionController::class, 'getTrxByWarehouse']);
+    Route::post('purchase-order', [TransactionController::class, 'purchaseOrder']);
+    Route::get('get-trx-by-invoice/{invoice}', [TransactionController::class, 'getTrxByInvoice']);
+    //end transactions
 });

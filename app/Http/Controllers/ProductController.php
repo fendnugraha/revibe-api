@@ -2,9 +2,11 @@
 
 namespace App\Http\Controllers;
 
-use App\Http\Resources\DataResource;
 use App\Models\Product;
 use Illuminate\Http\Request;
+use App\Models\WarehouseStock;
+use App\Http\Resources\DataResource;
+use Carbon\Carbon;
 
 class ProductController extends Controller
 {
@@ -123,6 +125,37 @@ class ProductController extends Controller
     public function getAllProducts()
     {
         $products = Product::orderBy('name')->get();
+        return new DataResource($products, true, "Successfully fetched products");
+    }
+
+    public function getAllProductsByWarehouse($warehouse, $endDate, Request $request)
+    {
+        $status = $request->status;
+        $products = Product::withSum([
+            'transactions' => function ($query) use ($warehouse, $endDate, $status) {
+                $query->where('warehouse_id', $warehouse)
+                    ->where('date_issued', '<=', Carbon::parse($endDate)->endOfDay())
+                    ->when($status, function ($query) use ($status) {
+                        $query->where('status', $status);
+                    });
+            }
+        ], 'quantity')->orderBy('name')->get();
+
+        // Ambil semua stok awal sekaligus
+        $warehouseStocks = WarehouseStock::where('warehouse_id', $warehouse)
+            ->pluck('init_stock', 'product_id'); // hasil: [product_id => init_stock]
+
+        // Tambahkan init_stock dan current_stock ke setiap product
+        $products->transform(function ($product) use ($warehouseStocks) {
+            $initStock = $warehouseStocks[$product->id] ?? 0;
+            $qty = $product->transactions_sum_quantity ?? 0;
+
+            $product->init_stock = $initStock;
+            $product->current_stock = $initStock + $qty;
+
+            return $product;
+        });
+
         return new DataResource($products, true, "Successfully fetched products");
     }
 }

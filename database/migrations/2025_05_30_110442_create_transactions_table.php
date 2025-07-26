@@ -12,29 +12,26 @@ return new class extends Migration
     public function up(): void
     {
         Schema::create('transactions', function (Blueprint $table) {
-            $table->id(); // ID utama untuk transaksi
-            $table->dateTime('date_issued')->index(); // Tanggal transaksi, diindex
-            $table->string('invoice', 60)->index(); // Nomor invoice, diindex untuk pencarian cepat
+            $table->id();
+            $table->dateTime('date_issued')->index();
+            $table->string('invoice', 60)->index();
 
-            // Kolom yang berhubungan dengan produk, menggunakan foreign key
-            $table->foreignId('product_id')->constrained('products')->onDelete('restrict'); // Foreign key untuk products
-            $table->integer('quantity'); // Jumlah barang yang terjual
+            $table->foreignId('product_id')->constrained('products')->onDelete('restrict');
+            $table->decimal('quantity', 10, 2); // jika memungkinkan pakai pecahan
+            $table->decimal('price', 15, 2);
+            $table->decimal('cost', 15, 2);
 
-            // Kolom harga dan biaya, lebih baik menggunakan decimal untuk akurasi
-            $table->decimal('price', 15, 2); // Harga per unit, menggunakan decimal
-            $table->decimal('cost', 15, 2);  // Biaya per unit, menggunakan decimal
-
-            $table->enum('transaction_type', ['Sales', 'Purchase', 'Order']); // Jenis transaksi (Penjualan atau Pembelian
+            $table->enum('transaction_type', ['Sales', 'Purchase', 'Order', 'Adjustment', 'Reversal']);
             $table->foreignId('contact_id')->constrained('contacts')->onDelete('restrict');
+            $table->foreignId('warehouse_id')->constrained('warehouses')->onDelete('restrict');
+            $table->foreignId('user_id')->constrained('users')->onDelete('restrict');
 
-            // Kolom yang berhubungan dengan warehouse dan user, menggunakan foreign key
-            $table->foreignId('warehouse_id')->constrained('warehouses')->onDelete('restrict'); // Foreign key untuk warehouses
-            $table->foreignId('user_id')->constrained('users')->onDelete('restrict'); // Foreign key untuk users
-
-            $table->integer('status')->default(1); // Status penjualan (misal: 1 untuk aktif, 0 untuk dibatalkan)
-            $table->string('serial_number', 255)->nullable(); // Nomor seri barang, boleh kosong
+            $table->enum('status', ['Active', 'Cancelled', 'On Delivery', 'Confirmed'])->default('Active'); // 1: active, 0: cancelled
+            $table->string('serial_number', 255)->nullable();
 
             $table->timestamps();
+            // Optional index gabungan
+            $table->index(['warehouse_id', 'date_issued']);
         });
     }
 

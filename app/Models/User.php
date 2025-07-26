@@ -46,6 +46,17 @@ class User extends Authenticatable
         ];
     }
 
+    protected static function boot()
+    {
+        parent::boot();
+
+        static::deleting(function ($user) {
+            if ($user->id === 1) {
+                throw new \Exception("Default admin user cannot be deleted.");
+            }
+        });
+    }
+
     public function warehouse()
     {
         return $this->belongsTo(Warehouse::class);
