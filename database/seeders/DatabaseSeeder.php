@@ -61,6 +61,23 @@ class DatabaseSeeder extends Seeder
             'Description' => 'General Customer',
         ]);
 
+        Contact::insert([
+            [
+                'name' => 'Putra Riwayat',
+                'type' => 'Supplier',
+                'phone_number' => '082231235506',
+                'address' => 'Bandung, Jawa Barat, ID, 40375',
+                'Description' => 'General Supplier',
+            ],
+            [
+                'name' => 'DOA IBU Inc',
+                'type' => 'Customer',
+                'phone_number' => '085186080992',
+                'address' => 'Bandung, Jawa Barat, ID, 40375',
+                'Description' => 'General Customer',
+            ]
+        ]);
+
         ProductCategory::insert([
             ['id' => 1, 'name' => 'General', 'code_prefix' => 'GNR'],
             ['id' => 2, 'name' => 'Sparepart', 'code_prefix' => 'SPR'],

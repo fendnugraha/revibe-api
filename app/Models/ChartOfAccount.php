@@ -59,4 +59,15 @@ class ChartOfAccount extends Model
     {
         return $this->belongsTo(Warehouse::class);
     }
+
+    public function updateInitEquityBalance()
+    {
+        $assets = $this->whereIn('account_id', \range(1, 18))->sum('st_balance');
+        $liabilities = $this->whereIn('account_id', \range(19, 25))->sum('st_balance');
+        $equity = $this->where('account_id', 26)->where('acc_code', '!=', '30100-001')->sum('st_balance');
+
+        $this->where('acc_code', '30100-001')->update(['st_balance' => $assets - $liabilities - $equity]);
+
+        return $assets - $liabilities - $equity;
+    }
 }

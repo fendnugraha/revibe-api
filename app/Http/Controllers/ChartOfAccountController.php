@@ -6,7 +6,9 @@ use Carbon\Carbon;
 use App\Models\Account;
 use App\Models\Journal;
 use Illuminate\Http\Request;
+use App\Models\AccountBalance;
 use App\Models\ChartOfAccount;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use App\Http\Resources\DataResource;
 
@@ -117,6 +119,11 @@ class ChartOfAccountController extends Controller
                 'st_balance' => $request->st_balance ?? 0,
             ]);
 
+            $chartOfAccount->updateInitEquityBalance();
+            DB::statement('SET FOREIGN_KEY_CHECKS=0;');
+            AccountBalance::truncate();
+            DB::statement('SET FOREIGN_KEY_CHECKS=1;');
+
             return response()->json([
                 'message' => 'Chart of account updated successfully',
                 'chart_of_account' => $chartOfAccount
@@ -225,10 +232,70 @@ class ChartOfAccountController extends Controller
         return new DataResource($chartOfAccounts, true, "Successfully fetched chart of accounts");
     }
 
-    public function profitLossReport()
+    public function balanceSheetReport($endDate)
     {
-        $startDate = now()->startOfDay();
         $endDate = now()->endOfDay();
+
+        $accounts = ChartOfAccount::with(['entriesWithJournal' => function ($query) use ($endDate) {
+            $query->where('journals.date_issued', '<=', $endDate)->where('status', 'Active');
+        }, 'account'])->get();
+
+        $assets = $accounts->whereIn('account_id', \range(1, 18))->groupBy('account_id');
+        $liabilities = $accounts->whereIn('account_id', \range(19, 25))->groupBy('account_id');
+        $equity = $accounts->where('account_id', 26)->groupBy('account_id');
+
+        function calculateBalanceBs($acc)
+        {
+            $entries = collect($acc['entriesWithJournal']);
+            $balanceFromJournal = $acc->account->status == "D"
+                ? $entries->sum('debit') - $entries->sum('credit')
+                : $entries->sum('credit') - $entries->sum('debit');
+
+            return $acc->st_balance + $balanceFromJournal;
+        }
+
+
+        $data = collect([
+            'assets' => $assets,
+            'liabilities' => $liabilities,
+            'equity' => $equity,
+        ])->map(function ($group) {
+            return [
+                'total' => $group->flatten(1)->sum(fn($acc) => calculateBalanceBs($acc)) ?? 0,
+                'accounts' => $group->map(function ($accounts) {
+                    $first = $accounts[0];
+                    $accGroupName = $first['account']['name'];
+
+                    return [
+                        'acc_name' => $accGroupName,
+                        'balance' => collect($accounts)->sum(fn($acc) => calculateBalanceBs($acc)) ?? 0,
+                        'coa' => collect($accounts)->map(function ($acc) {
+                            return [
+                                'acc_name' => $acc['acc_name'],
+                                'balance' => calculateBalanceBs($acc) ?? 0,
+                            ];
+                        })->values()->toArray(),
+                    ];
+                })->values()->toArray(),
+            ];
+        })->toArray();
+
+        $profitloss = [
+            'profitLoss' => Journal::profitLossCount('2020-01-01', $endDate),
+        ];
+        $balanceSheet = array_merge($data, $profitloss);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Successfully fetched profit and loss',
+            'data' => $balanceSheet
+        ]);
+    }
+
+    public function profitLossReport($startDate, $endDate)
+    {
+        $startDate = $startDate ? Carbon::parse($startDate)->startOfDay() : Carbon::now()->startOfDay();
+        $endDate = $endDate ? Carbon::parse($endDate)->endOfDay() : Carbon::now()->endOfDay();
 
         $accounts = ChartOfAccount::with(['entriesWithJournal' => function ($query) use ($startDate, $endDate) {
             $query->whereBetween('journals.date_issued', [$startDate, $endDate]);
@@ -279,26 +346,286 @@ class ChartOfAccountController extends Controller
         ]);
     }
 
-
-    public function addCashAndBankToWarehouse($warehouse, $id)
+    public function cashFlowReport($startDate, $endDate)
     {
-        $chartOfAccount = ChartOfAccount::find($id);
+        $startDate = $startDate ? Carbon::parse($startDate)->startOfDay() : Carbon::now()->startOfDay();
+        $endDate = $endDate ? Carbon::parse($endDate)->endOfDay() : Carbon::now()->endOfDay();
 
-        if (!$warehouse || !$chartOfAccount) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Warehouse or chart of account not found'
-            ], 404);
+        $accounts = ChartOfAccount::with(['entriesWithJournal' => function ($query) use ($startDate, $endDate) {
+            $query->whereBetween('journals.date_issued', [$startDate, $endDate]);
+        }, 'account'])
+            ->get();
+
+        $revenue = $accounts->whereIn('account_id', \range(27, 30))->groupBy('account_id');
+        $receivable = $accounts->whereIn('account_id', [4, 5])->groupBy('account_id');
+        $inventory = $accounts->whereIn('account_id', [6, 7])->groupBy('account_id');
+        $investment = $accounts->whereIn('account_id', [10, 11, 12])->groupBy('account_id');
+        $assets = $accounts->whereIn('account_id', [13, 14, 15, 16, 17, 18])->groupBy('account_id');
+        $payable = $accounts->whereIn('account_id', \range(19, 25))->groupBy('account_id');
+        $equity = $accounts->where('account_id', 26)->groupBy('account_id');
+        $expense = $accounts->whereIn('account_id', \range(33, 45))->groupBy('account_id');
+
+        function calculateBalanceCf($acc)
+        {
+            $entries = collect($acc['entriesWithJournal']);
+            return $acc->account->status == "D"
+                ? $entries->sum('debit') - $entries->sum('credit')
+                : $entries->sum('credit') - $entries->sum('debit');
         }
-        $updateValue = $chartOfAccount->warehouse_id ? null : $warehouse;
-        $chartOfAccount->update(['warehouse_id' => $updateValue]);
 
-        $message = $chartOfAccount->warehouse_id ? 'Cash and bank account added to warehouse' : 'Cash and bank account removed from warehouse';
+        $startBalance = Journal::cashflowCount('2020-01-01', $startDate);
+        $endBalance = Journal::cashflowCount('2020-01-01', $endDate);
+
+        $data = collect([
+            'revenue' => $revenue,
+            'receivable' => $receivable,
+            'inventory' => $inventory,
+            'investment' => $investment,
+            'assets' => $assets,
+            'payable' => $payable,
+            'equity' => $equity,
+            'expense' => $expense,
+        ])->map(function ($group) {
+            return [
+                'total' => $group->flatten(1)->sum(fn($acc) => calculateBalanceCf($acc)),
+                'accounts' => $group->map(function ($accounts) {
+                    $first = $accounts[0];
+                    $accGroupName = $first['account']['name'];
+
+                    return [
+                        'acc_name' => $accGroupName,
+                        'balance' => collect($accounts)->sum(fn($acc) => calculateBalanceCf($acc)),
+                        'coa' => collect($accounts)->map(function ($acc) {
+                            return [
+                                'acc_name' => $acc['acc_name'],
+                                'balance' => calculateBalanceCf($acc),
+                            ];
+                        })->values()->toArray(),
+                    ];
+                })->values()->toArray(),
+            ];
+        })->toArray();
+
+        $cashFlowBalance = [
+            'start_balance' => $startBalance,
+            'end_balance' => $endBalance,
+        ];
+
+        $cashFlow = array_merge($cashFlowBalance, $data);
 
         return response()->json([
             'success' => true,
-            'message' => $message,
-            'data' => $chartOfAccount
+            'message' => 'Successfully fetched cash flow',
+            'data' => $cashFlow
+        ]);
+    }
+
+    public function cashFlowReportX($startDate, $endDate)
+    {
+        $startDate = $startDate ? Carbon::parse($startDate)->startOfDay() : Carbon::now()->startOfDay();
+        $endDate = $endDate ? Carbon::parse($endDate)->endOfDay() : Carbon::now()->endOfDay();
+
+        $journal = new Journal();
+
+        $chartOfAccounts = ChartOfAccount::with(['account'])->get();
+        $cashBank = $chartOfAccounts->whereIn('account_id', [1, 2]);
+
+        $cashBankCodes = $cashBank->pluck('id');
+
+        $transactions = $journal->with(['debt', 'cred'])
+            ->selectRaw('debt_code, cred_code, SUM(amount) as total')
+            ->where(function ($query) use ($cashBankCodes) {
+                $query->whereIn('debt_code', $cashBankCodes)
+                    ->orWhereIn('cred_code', $cashBankCodes);
+            })
+            ->whereBetween('date_issued', [$startDate, $endDate])
+            ->groupBy('debt_code', 'cred_code')
+            ->get();
+
+        foreach ($chartOfAccounts as $value) {
+            $debit = $transactions->where('cred_code', $value->id)
+                ->sum('total');
+            $credit = $transactions->where('debt_code', $value->id)
+                ->sum('total');
+
+            $value->balance = $debit - $credit;
+        }
+
+        $initBalance = $chartOfAccounts->whereIn('account_id', [1, 2])->sum('st_balance');
+
+        $startBalance = $initBalance + $journal->cashflowCount('0000-00-00', $startDate);
+        $endBalance = $initBalance + $journal->cashflowCount('0000-00-00', $endDate);
+
+        $revenue = $chartOfAccounts->whereIn('account_id', \range(27, 30))->groupBy('account_id');
+        $receivable = $chartOfAccounts->whereIn('account_id', [4, 5])->groupBy('account_id');
+        $inventory = $chartOfAccounts->whereIn('account_id', [6, 7])->groupBy('account_id');
+        $investment = $chartOfAccounts->whereIn('account_id', [10, 11, 12])->groupBy('account_id');
+        $assets = $chartOfAccounts->whereIn('account_id', [13, 14, 15, 16, 17, 18])->groupBy('account_id');
+        $payable = $chartOfAccounts->whereIn('account_id', \range(19, 25))->groupBy('account_id');
+        $equity = $chartOfAccounts->where('account_id', 26)->groupBy('account_id');
+        $expense = $chartOfAccounts->whereIn('account_id', \range(33, 45))->groupBy('account_id');
+
+        $cashflow = [
+            'start_balance' => $startBalance,
+            'end_balance' => $endBalance,
+            'revenue' => [
+                'total' => $revenue->flatten()->sum('balance'),
+                'accounts' => $revenue->map(function ($a) {
+                    return [
+                        'acc_name' => $a->first()->account->name,
+                        'balance' => intval($a->sum('balance')),
+                        'coa' => $a->map(function ($coa) {
+                            return [
+                                'acc_name' => $coa->acc_name,
+                                'balance' => intval($coa->balance)
+                            ];
+                        })
+                            ->values()
+                            ->toArray()
+                    ];
+                })
+                    ->values()
+                    ->toArray()
+            ],
+            'receivable' => [
+                'total' => $receivable->flatten()->sum('balance'),
+                'accounts' => $receivable->map(function ($a) {
+                    return [
+                        'acc_name' => $a->first()->account->name,
+                        'balance' => intval($a->sum('balance')),
+                        'coa' => $a->map(function ($coa) {
+                            return [
+                                'acc_name' => $coa->acc_name,
+                                'balance' => intval($coa->balance)
+                            ];
+                        })
+                            ->values()
+                            ->toArray()
+                    ];
+                })
+                    ->values()
+                    ->toArray()
+            ],
+            'inventory' => [
+                'total' => $inventory->flatten()->sum('balance'),
+                'accounts' => $inventory->map(function ($a) {
+                    return [
+                        'acc_name' => $a->first()->account->name,
+                        'balance' => intval($a->sum('balance')),
+                        'coa' => $a->map(function ($coa) {
+                            return [
+                                'acc_name' => $coa->acc_name,
+                                'balance' => intval($coa->balance)
+                            ];
+                        })
+                            ->values()
+                            ->toArray()
+                    ];
+                })
+                    ->values()
+                    ->toArray()
+            ],
+            'investment' => [
+                'total' => $investment->flatten()->sum('balance'),
+                'accounts' => $investment->map(function ($a) {
+                    return [
+                        'acc_name' => $a->first()->account->name,
+                        'balance' => intval($a->sum('balance')),
+                        'coa' => $a->map(function ($coa) {
+                            return [
+                                'acc_name' => $coa->acc_name,
+                                'balance' => intval($coa->balance)
+                            ];
+                        })
+                            ->values()
+                            ->toArray()
+                    ];
+                })
+                    ->values()
+                    ->toArray()
+            ],
+            'assets' => [
+                'total' => $assets->flatten()->sum('balance'),
+                'accounts' => $assets->map(function ($a) {
+                    return [
+                        'acc_name' => $a->first()->account->name,
+                        'balance' => intval($a->sum('balance')),
+                        'coa' => $a->map(function ($coa) {
+                            return [
+                                'acc_name' => $coa->acc_name,
+                                'balance' => intval($coa->balance)
+                            ];
+                        })
+                            ->values()
+                            ->toArray()
+                    ];
+                })
+                    ->values()
+                    ->toArray()
+            ],
+            'payable' => [
+                'total' => $payable->flatten()->sum('balance'),
+                'accounts' => $payable->map(function ($a) {
+                    return [
+                        'acc_name' => $a->first()->account->name,
+                        'balance' => intval($a->sum('balance')),
+                        'coa' => $a->map(function ($coa) {
+                            return [
+                                'acc_name' => $coa->acc_name,
+                                'balance' => intval($coa->balance)
+                            ];
+                        })
+                            ->values()
+                            ->toArray()
+                    ];
+                })
+                    ->values()
+                    ->toArray()
+            ],
+            'equity' => [
+                'total' => $equity->flatten()->sum('balance'),
+                'accounts' => $equity->map(function ($a) {
+                    return [
+                        'acc_name' => $a->first()->account->name,
+                        'balance' => intval($a->sum('balance')),
+                        'coa' => $a->map(function ($coa) {
+                            return [
+                                'acc_name' => $coa->acc_name,
+                                'balance' => intval($coa->balance)
+                            ];
+                        })
+                            ->values()
+                            ->toArray()
+                    ];
+                })
+                    ->values()
+                    ->toArray()
+            ],
+            'expense' => [
+                'total' => $expense->flatten()->sum('balance'),
+                'accounts' => $expense->map(function ($a) {
+                    return [
+                        'acc_name' => $a->first()->account->name,
+                        'balance' => intval($a->sum('balance')),
+                        'coa' => $a->map(function ($coa) {
+                            return [
+                                'acc_name' => $coa->acc_name,
+                                'balance' => intval($coa->balance)
+                            ];
+                        })
+                            ->values()
+                            ->toArray()
+                    ];
+                })
+                    ->values()
+                    ->toArray()
+            ],
+        ];
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Successfully fetched cash flow report',
+            'data' => $cashflow
         ]);
     }
 

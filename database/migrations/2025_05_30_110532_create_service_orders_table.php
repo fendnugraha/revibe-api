@@ -15,7 +15,6 @@ return new class extends Migration
             $table->id();
             $table->dateTime('date_issued');
             $table->string('invoice', 60)->nullable()->unique();
-            $table->enum('payment_method', ['Cash', 'Credit', 'Bank Transfer', 'Unpaid', 'Other'])->default('Unpaid');
             $table->string('order_number', 60)->unique();
             $table->string('phone_number', 15);
             $table->string('phone_type', 160);

@@ -11,4 +11,9 @@ class JournalEntry extends Model
     {
         return $this->belongsTo(Journal::class);
     }
+
+    public function chartOfAccount()
+    {
+        return $this->belongsTo(ChartOfAccount::class);
+    }
 }

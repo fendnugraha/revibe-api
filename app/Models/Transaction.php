@@ -23,6 +23,11 @@ class Transaction extends Model
         return $this->belongsTo(Contact::class);
     }
 
+    public function stock_movements()
+    {
+        return $this->hasMany(StockMovement::class);
+    }
+
     public function user()
     {
         return $this->belongsTo(User::class);

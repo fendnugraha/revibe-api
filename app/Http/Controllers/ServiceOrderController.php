@@ -20,8 +20,13 @@ class ServiceOrderController extends Controller
      */
     public function index(Request $request)
     {
-        $orders = ServiceOrder::with(['contact', 'user', 'warehouse'])
+        $orders = ServiceOrder::with(['contact', 'user', 'warehouse', 'technician'])
             ->where('order_number', 'like', '%' . $request->search . '%')
+            ->orWhere('phone_type', 'like', '%' . $request->search . '%')
+            ->orWhereHas('contact', function ($query) use ($request) {
+                $query->where('name', 'like', '%' . $request->search . '%')
+                    ->orWhere('phone_number', 'like', '%' . $request->search . '%');
+            })
             ->orderBy('order_number', 'desc')
             ->paginate(10)
             ->onEachSide(0);
@@ -119,10 +124,9 @@ class ServiceOrderController extends Controller
 
     public function GetOrderByOrderNumber($order_number)
     {
-        $order = ServiceOrder::with(['contact', 'user', 'warehouse', 'technician', 'transaction.product'])
+        $order = ServiceOrder::with(['contact', 'user', 'warehouse', 'technician', 'transaction.stock_movements.product'])
             ->where('order_number', $order_number)
             ->first();
-
 
         return new DataResource($order, true, "Successfully fetched service order");
     }
@@ -147,7 +151,7 @@ class ServiceOrderController extends Controller
         }
 
         if ($request->status == 'Take Over' && $order->technician_id === auth()->user()->id) {
-            return response()->json(['success' => false, 'message' => 'Tidak boleh mengambil order sendiri'], 404);
+            return response()->json(['success' => false, 'message' => 'Tidak boleh mengambil order sendiri'], 400);
         }
 
         if ($order && $order->status != $request->status) {
@@ -156,7 +160,7 @@ class ServiceOrderController extends Controller
             $order->save();
             return response()->json(['success' => true, 'message' => 'Order status updated to ' . $request->status . '', 'data' => $order], 200);
         } else {
-            return response()->json(['success' => false, 'message' => 'Failed to update order status'], 404);
+            return response()->json(['success' => false, 'message' => 'Failed to update order status'], 400);
         }
     }
 
@@ -171,8 +175,8 @@ class ServiceOrderController extends Controller
         ]);
 
         $order = ServiceOrder::where('order_number', $request->order_number)->first();
-        $totalPrice = $order->transaction()->selectRaw('SUM(quantity * price) as total')->value('total');
-        $totalCost = $order->transaction()->selectRaw('SUM(quantity * cost) as total')->value('total');
+        $totalPrice = $order?->transaction?->stock_movements()->selectRaw('SUM(quantity * price) as total')->value('total');
+        $totalCost = $order?->transaction?->stock_movements()->selectRaw('SUM(quantity * cost) as total')->value('total');
 
         if ($order) {
             DB::beginTransaction();
@@ -182,6 +186,7 @@ class ServiceOrderController extends Controller
                     'date_issued' => $request->date_issued ?? now(),
                     'transaction_type' => 'Sales',
                     'description' => 'Pembayaran Service Order ' . $order->order_number,
+                    'finance_type' => $request->paymentMethod == 'credit' ? 'Receivable' : null,
                     'user_id' => auth()->user()->id,
                     'warehouse_id' => auth()->user()->role->warehouse_id
                 ]);
@@ -235,8 +240,8 @@ class ServiceOrderController extends Controller
                 ]);
 
                 $order->status = "Completed";
-                $order->payment_method = 'Cash';
-                $order->save();
+                $order->transaction->payment_method = $request->paymentMethod == "cash" ? "Cash/Bank Transfer" : "Credit";
+                $order->push();
 
                 DB::commit();
                 return response()->json(['success' => true, 'message' => 'Payment made successfully', 'data' => $order], 200);
@@ -269,21 +274,29 @@ class ServiceOrderController extends Controller
         $warehouseId = auth()->user()->role->warehouse_id;
         $userId = auth()->user()->id;
 
+        $transaction = Transaction::create([
+            'date_issued' => now(),
+            'invoice' => $newinvoice,
+            'transaction_type' => "Order",
+            'status' => "Active",
+            'contact_id' => $request->contact_id ?? 1,
+            'warehouse_id' => $warehouseId,
+            'user_id' => $userId
+        ]);
+
         DB::beginTransaction();
         try {
             foreach ($request->parts as $item) {
-                $cost = Product::find($item['id'])->cost;
-                Transaction::create([
+                $cost = Product::find($item['id'])->current_cost;
+
+                $transaction->stock_movements()->create([
                     'date_issued' => now(),
-                    'invoice' => $newinvoice,
                     'product_id' => $item['id'],
                     'quantity' => -$item['quantity'],
-                    'price' => $item['price'],
                     'cost' => $cost,
-                    'transaction_type' => $request->transaction_type,
-                    'contact_id' => 1,
+                    'price' => $item['price'],
                     'warehouse_id' => $warehouseId,
-                    'user_id' => $userId
+                    'transaction_type' => "Order"
                 ]);
             }
 

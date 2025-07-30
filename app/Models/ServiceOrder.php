@@ -30,7 +30,7 @@ class ServiceOrder extends Model
 
     public function transaction()
     {
-        return $this->hasMany(Transaction::class, 'invoice', 'invoice');
+        return $this->belongsTo(Transaction::class, 'invoice', 'invoice');
     }
 
     public function contact()

@@ -125,7 +125,7 @@ class Journal extends Model
 
     public static function sales_journal()
     {
-        return self::generateJournalInvoice('SO.BK', 'transactions', [['transaction_type', '=', 'Sales'], ['satatus', '=', 3]]);
+        return self::generateJournalInvoice('SO.BK', 'transactions', [['transaction_type', '=', 'Sales']]);
     }
 
     public static function order_journal()
@@ -143,14 +143,20 @@ class Journal extends Model
 
         $nextNumber = $lastInvoice ? $lastInvoice + 1 : 1;
 
-        return 'RO.BK' . now()->format('dmY') . '.' . $userId . '.' . str_pad($nextNumber, 7, '0', STR_PAD_LEFT);
+        return 'RO.BK.' . now()->format('dmY') . '.' . $userId . '.' . str_pad($nextNumber, 7, '0', STR_PAD_LEFT);
     }
 
 
     public static function purchase_journal()
     {
         // Untuk purchase journal, kita menambahkan kondisi agar hanya mengembalikan yang quantity > 0
-        return self::generateJournalInvoice('PO.BK', 'transactions', [['quantity', '>', 0], ['transaction_type', '=', 'Purchase']]);
+        return self::generateJournalInvoice('PO.BK', 'transactions', [['transaction_type', '=', 'Purchase']]);
+    }
+
+    public static function adjustment_journal()
+    {
+        // Untuk purchase journal, kita menambahkan kondisi agar hanya mengembalikan yang quantity > 0
+        return self::generateJournalInvoice('AJ.BK', 'transactions', [['transaction_type', '=', 'Adjustment']]);
     }
 
     public static function endBalanceBetweenDate($account_code, $start_date, $end_date)
@@ -198,60 +204,61 @@ class Journal extends Model
         return ($includeEquity ? $initBalance : 0) + $assets - $liabilities - ($includeEquity ? $equity : 0);
     }
 
-    public function profitLossCount($start_date, $end_date)
+    public static function profitLossCount($startDate, $endDate)
     {
-        // Use relationships if available
-        $start_date = Carbon::parse($start_date)->copy()->startOfDay();
-        $end_date = Carbon::parse($end_date)->copy()->endOfDay();
+        $startDate = Carbon::parse($startDate)->startOfDay();
+        $endDate = Carbon::parse($endDate)->endOfDay();
 
-        $coa = ChartOfAccount::with('account')->whereIn('account_id', \range(27, 45))->get();
+        $accounts = ChartOfAccount::with(['entriesWithJournal' => function ($query) use ($startDate, $endDate) {
+            $query->whereBetween('journals.date_issued', [$startDate, $endDate]);
+        }, 'account'])->get();
 
-        $transactions = $this->selectRaw('debt_code, cred_code, SUM(amount) as total')
-            ->whereBetween('date_issued', [$start_date, $end_date])
-            ->groupBy('debt_code', 'cred_code')
-            ->get();
+        // Hitung balance berdasarkan status akun
+        $calculateBalance = function ($acc) {
+            $entries = collect($acc->entriesWithJournal);
+            return $acc->account->status == "D"
+                ? $entries->sum('debit') - $entries->sum('credit')
+                : $entries->sum('credit') - $entries->sum('debit');
+        };
 
-        foreach ($coa as $value) {
-            $debit = $transactions->where('debt_code', $value->acc_code)->sum('total');
-            $credit = $transactions->where('cred_code', $value->acc_code)->sum('total');
+        // Kategorisasi akun
+        $revenue = $accounts->whereIn('account_id', range(27, 30));
+        $cost = $accounts->whereIn('account_id', range(31, 32));
+        $expense = $accounts->whereIn('account_id', range(33, 45));
 
-            $value->balance = ($value->account->status == "D") ? ($value->st_balance + $debit - $credit) : ($value->st_balance + $credit - $debit);
-        }
+        // Hitung total per kategori
+        $totalRevenue = $revenue->sum($calculateBalance);
+        $totalCost = $cost->sum($calculateBalance);
+        $totalExpense = $expense->sum($calculateBalance);
 
-        // Use collections for filtering
-        $revenue = $coa->whereIn('account_id', \range(27, 30))->sum('balance');
-        $cost = $coa->whereIn('account_id', \range(31, 32))->sum('balance');
-        $expense = $coa->whereIn('account_id', \range(33, 45))->sum('balance');
+        $profitOrLoss = $totalRevenue - $totalCost - $totalExpense;
 
-        // Use Eloquent to update a specific record if it exists
-        $specificRecord = ChartOfAccount::where('acc_code', '30100-002')->first();
-        if ($specificRecord) {
-            $specificRecord->update(['st_balance' => $revenue - $cost - $expense]);
-        }
-
-        // Return the calculated profit or loss
-        return $revenue - $cost - $expense;
+        return $profitOrLoss;
     }
 
-    public function cashflowCount($start_date, $end_date)
-    {
-        $cashAccount = ChartOfAccount::all();
 
-        $transactions = $this->selectRaw('debt_code, cred_code, SUM(amount) as total')
-            ->whereBetween('date_issued', [$start_date, $end_date])
-            ->groupBy('debt_code', 'cred_code')
+    public static function cashflowCount($startDate, $endDate)
+    {
+        $startDate = $startDate ? Carbon::parse($startDate)->startOfDay() : now()->startOfDay();
+        $endDate = $endDate ? Carbon::parse($endDate)->endOfDay() : now()->endOfDay();
+
+        $accounts = ChartOfAccount::with(['entriesWithJournal' => function ($query) use ($startDate, $endDate) {
+            $query->whereBetween('journals.date_issued', [$startDate, $endDate]);
+        }, 'account'])
+            ->whereIn('account_id', [1, 2])
             ->get();
 
-        foreach ($cashAccount as $value) {
-            $debit = $transactions->where('debt_code', $value->acc_code)->sum('total');
+        foreach ($accounts as $acc) {
+            $entries = collect($acc->entriesWithJournal ?? []);
+            $status = $acc->account->status ?? 'D';
 
-            $credit = $transactions->where('cred_code', $value->acc_code)->sum('total');
+            $sumDebtCredit = $status == "D"
+                ? $entries->sum('debit') - $entries->sum('credit')
+                : $entries->sum('credit') - $entries->sum('debit');
 
-            $value->balance = $debit - $credit;
+            $acc->balance = $acc->st_balance + $sumDebtCredit;
         }
 
-        $result = $cashAccount->whereIn('account_id', [1, 2])->sum('balance');
-
-        return $result;
+        return $accounts->sum('balance');
     }
 }

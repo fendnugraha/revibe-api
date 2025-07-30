@@ -16,7 +16,7 @@ class FinanceController extends Controller
     /**
      * Display a listing of the resource.
      */
-    public function index($contact, $financeType)
+    public function index($contact, $financeType = "Payable")
     {
         $finance = Finance::with(['contact', 'account'])
             ->where(fn($query) => $contact == "All" ?
@@ -51,8 +51,7 @@ class FinanceController extends Controller
     public function store(Request $request)
     {
         $dateIssued = $request->date_issued ? Carbon::parse($request->date_issued) : Carbon::now();
-        $pay = new Finance();
-        $invoice_number = $pay->invoice_finance($request->contact_id, $request->type);
+        $invoice_number = Finance::generateFinanceInvoice($request->contact_id, $request->type);
 
         $request->validate([
             'amount' => 'required|numeric',
@@ -64,9 +63,34 @@ class FinanceController extends Controller
 
         DB::beginTransaction();
         try {
-            Finance::create([
+            $journal = Journal::create([
+                'invoice' => $invoice_number,
                 'date_issued' => $dateIssued,
-                'due_date' => $dateIssued->copy()->addDays(30),
+                'transaction_type' => null,
+                'description' => $request->description,
+                'finance_type' => $request->type,
+                'user_id' => auth()->user()->id,
+                'warehouse_id' => auth()->user()->role->warehouse_id
+            ]);
+
+            $journal->entries()->createMany([
+                [
+                    'journal_id' => $journal->id,
+                    'chart_of_account_id' => $request->cred_code,
+                    'debit' => 0,
+                    'credit' => $request->amount
+                ],
+                [
+                    'journal_id' => $journal->id,
+                    'chart_of_account_id' => $request->debt_code,
+                    'debit' => $request->amount,
+                    'credit' => 0
+                ],
+            ]);
+
+            $finance = Finance::create([
+                'date_issued' => $request->date_issued ?? now(),
+                'due_date' => Carbon::parse($request->date_issued)->addDays(30) ?? now()->addDays(30),
                 'invoice' => $invoice_number,
                 'description' => $request->description,
                 'bill_amount' => $request->amount,
@@ -74,32 +98,17 @@ class FinanceController extends Controller
                 'payment_status' => 0,
                 'payment_nth' => 0,
                 'finance_type' => $request->type,
+                'journal_id' => $journal->id,
                 'contact_id' => $request->contact_id,
-                'user_id' => auth()->id,
-                'account_code' => $request->type == 'Payable' ? $request->cred_code : $request->debt_code
-            ]);
-
-            Journal::create([
-                'date_issued' => $dateIssued,
-                'invoice' => $invoice_number,
-                'description' => $request->description,
-                'debt_code' => $request->debt_code,
-                'cred_code' => $request->cred_code,
-                'amount' => $request->amount,
-                'fee_amount' => 0,
-                'status' => 1,
-                'rcv_pay' => $request->type,
-                'payment_status' => 0,
-                'payment_nth' => 0,
-                'user_id' => auth()->id,
-                'warehouse_id' => 1
+                'user_id' => auth()->user()->id,
+                'warehouse_id' => auth()->user()->role->warehouse_id
             ]);
 
             DB::commit();
 
             return response()->json([
                 'status' => true,
-                'message' => 'Payable created successfully'
+                'message' => $finance->type . ' created successfully'
             ]);
         } catch (\Throwable $th) {
             DB::rollBack();
@@ -195,7 +204,7 @@ class FinanceController extends Controller
     public function getFinanceByContactId($contactId)
     {
         $finance = Finance::with(['contact', 'account'])
-            ->selectRaw('contact_id, SUM(bill_amount) as tagihan, SUM(payment_amount) as terbayar, SUM(bill_amount) - SUM(payment_amount) as sisa, finance_type, invoice')
+            ->selectRaw('contact_id, min(date_issued) as date_issued, SUM(bill_amount) as tagihan, SUM(payment_amount) as terbayar, SUM(bill_amount) - SUM(payment_amount) as sisa, finance_type, invoice')
             ->groupBy('contact_id', 'finance_type', 'invoice')
             ->where('contact_id', $contactId)
             ->get();
@@ -205,7 +214,7 @@ class FinanceController extends Controller
 
     public function getFinanceByType($contact, $financeType)
     {
-        $finance = Finance::with(['contact', 'account'])
+        $finance = Finance::with(['contact', 'journal.entries.chartOfAccount'])
             ->where(fn($query) => $contact == "All" ?
                 $query : $query->where('contact_id', $contact))
             ->where('finance_type', $financeType)
@@ -213,7 +222,7 @@ class FinanceController extends Controller
             ->paginate(10)
             ->onEachSide(0);
 
-        $financeGroupByContactId = Finance::with('contact')->selectRaw('contact_id, SUM(bill_amount) as tagihan, SUM(payment_amount) as terbayar, SUM(bill_amount) - SUM(payment_amount) as sisa, finance_type')
+        $financeGroupByContactId = Finance::with('contact')->selectRaw('contact_id, SUM(bill_amount) - SUM(payment_amount) as sisa, finance_type')
             ->groupBy('contact_id', 'finance_type')->get();
 
         $data = [
@@ -256,11 +265,47 @@ class FinanceController extends Controller
             'notes' => 'required',
         ]);
 
+        $checkFinanceAccountIdOnJournal = Journal::with('entries')->where('invoice', $request->invoice)
+            ->where('payment_nth', 0)
+            ->whereHas('entries', function ($query) use ($request, $finance) {
+                if ($finance->finance_type == "Payable") {
+                    $query->where('credit', '>', 0);
+                } elseif ($finance->finance_type == "Receivable") {
+                    $query->where('debit', '>', 0);
+                };
+            })->first();
+
+        $financeAccountId = $checkFinanceAccountIdOnJournal?->entries->first()?->chart_of_account_id;
+
         $payment_nth = Finance::selectRaw('MAX(payment_nth) as payment_nth')->where('invoice', $request->invoice)->first()->payment_nth + 1;
-        $payment_status = $this->getInvoiceValue($request->invoice) == 0 ? 1 : 0;
 
         DB::beginTransaction();
         try {
+            $journal = Journal::create([
+                'invoice' => $request->invoice,  // Menggunakan metode statis untuk invoice
+                'date_issued' => $dateIssued ?? now(),
+                'transaction_type' => null,
+                'description' => 'Pembayaran ' . $request->invoice,
+                'payment_nth' => $payment_nth,
+                'finance_type' => $finance->finance_type,
+                'user_id' => auth()->user()->id,
+                'warehouse_id' => auth()->user()->role->warehouse_id
+            ]);
+
+            $journal->entries()->createMany([
+                [
+                    'journal_id' => $journal->id,
+                    'chart_of_account_id' => $finance->finance_type == "Payable" ? $request->account_id : $financeAccountId,
+                    'debit' => 0,
+                    'credit' => $request->amount
+                ],
+                [
+                    'journal_id' => $journal->id,
+                    'chart_of_account_id' => $finance->finance_type == "Receivable" ? $request->account_id : $financeAccountId,
+                    'debit' => $request->amount,
+                    'credit' => 0
+                ],
+            ]);
             Finance::create([
                 'date_issued' => $dateIssued,
                 'due_date' => $finance->due_date,
@@ -268,28 +313,11 @@ class FinanceController extends Controller
                 'description' => $request->notes,
                 'bill_amount' => 0,
                 'payment_amount' => $request->amount,
-                'payment_status' => $payment_status,
                 'payment_nth' => $payment_nth,
                 'finance_type' => $finance->finance_type,
+                'journal_id' => $journal->id,
                 'contact_id' => $request->contact_id,
-                'user_id' => auth()->id,
-                'account_code' => $request->account_id,
-            ]);
-
-            Journal::create([
-                'date_issued' => $dateIssued,
-                'invoice' => $request->invoice,
-                'description' => $request->notes,
-                'debt_code' => $finance->finance_type == 'Receivable' ? $request->account_id : $finance->account_code,
-                'cred_code' => $finance->finance_type == 'Receivable' ? $finance->account_code : $request->account_id,
-                'amount' => $request->amount,
-                'fee_amount' => 0,
-                'status' => 1,
-                'rcv_pay' => $this->getFinanceData($request->invoice)->finance_type,
-                'payment_status' => $payment_status,
-                'payment_nth' => $payment_nth,
-                'user_id' => auth()->id,
-                'warehouse_id' => 1
+                'user_id' => auth()->user()->id,
             ]);
 
             DB::commit();

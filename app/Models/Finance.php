@@ -29,17 +29,17 @@ class Finance extends Model
         return $this->belongsTo(Journal::class);
     }
 
-    public function generateFinanceInvoice($contact_id, $type)
+    public static function generateFinanceInvoice($contact_id, $type)
     {
         $prefix = $type == 'Payable' ? 'PY' : 'RC';
 
         $lastCode = self::where('contact_id', $contact_id)
-            ->where('type', $type)
-            ->selectRaw('MAX(RIGHT(code, 4)) AS lastCode')
+            ->where('finance_type', $type)
+            ->selectRaw('MAX(RIGHT(invoice, 7)) AS lastCode')
             ->value('lastCode');
 
         $nextCode = str_pad((int) $lastCode + 1, 7, '0', STR_PAD_LEFT);
 
-        return $prefix . '-BK-' . date('dmY') . '-' . $contact_id . '-' . $nextCode;
+        return $prefix . '.BK.' . date('dmY') . '.' . $contact_id . '.' . $nextCode;
     }
 }

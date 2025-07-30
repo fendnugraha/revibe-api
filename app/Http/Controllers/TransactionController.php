@@ -10,6 +10,7 @@ use App\Models\Transaction;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use App\Http\Resources\DataResource;
 
 class TransactionController extends Controller
@@ -135,14 +136,25 @@ class TransactionController extends Controller
         try {
             $totalCost = 0;
 
+            $transaction = Transaction::create([
+                'date_issued' => $request->date_issued,
+                'invoice' => $newinvoice,
+                'transaction_type' => "Purchase",
+                'status' => "On Delivery",
+                'contact_id' => $request->contact_id ?? 1,
+                'payment_method' => $request->paymentMethod == "credit" ? "Credit" : "Cash/Bank Transfer",
+                'user_id' => auth()->user()->id,
+                'warehouse_id' => auth()->user()->role->warehouse_id,
+            ]);
+
             // Tahap 1: Hitung total pembelian
             foreach ($request->cart as $item) {
-                $totalCost += $item['cost'] * $item['quantity'];
+                $totalCost += $item['current_cost'] * $item['quantity'];
             }
 
             // Tahap 2: Buat transaksi & alokasikan diskon secara proporsional
             foreach ($request->cart as $item) {
-                $subtotal = $item['cost'] * $item['quantity'];
+                $subtotal = $item['current_cost'] * $item['quantity'];
                 $diskonTeralokasi = 0;
 
                 if ($request->discount > 0 && $totalCost > 0) {
@@ -153,26 +165,21 @@ class TransactionController extends Controller
                 $hargaBersihTotal = $subtotal - $diskonTeralokasi;
                 $itemCostAfterDiscount = $item['quantity'] > 0
                     ? $hargaBersihTotal / $item['quantity']
-                    : $item['cost'];
+                    : $item['current_cost'];
 
-                Transaction::create([
+                $transaction->stock_movements()->create([
                     'date_issued' => $request->date_issued,
-                    'invoice' => $newinvoice,
                     'product_id' => $item['id'],
                     'quantity' => $item['quantity'],
+                    'cost' => $itemCostAfterDiscount,
                     'price' => 0,
-                    'cost' => round($itemCostAfterDiscount), // dibulatkan agar rapi
-                    'transaction_type' => "Purchase",
-                    'status' => "On Delivery",
-                    'contact_id' => $request->contact_id ?? 1,
-                    'user_id' => auth()->user()->id,
                     'warehouse_id' => auth()->user()->role->warehouse_id,
+                    'transaction_type' => "Purchase"
                 ]);
 
-                Product::updateStock($item['id'], $item['quantity'], auth()->user()->role->warehouse_id);
+                // Product::updateStock($item['id'], $item['quantity'], auth()->user()->role->warehouse_id);
                 Product::updateCost($item['id']);
             }
-
 
             $journal = Journal::create([
                 'invoice' => $newinvoice,  // Menggunakan metode statis untuk invoice
@@ -228,6 +235,7 @@ class TransactionController extends Controller
                     'finance_type' => "Payable",
                     'journal_id' => $journal->id,
                     'contact_id' => $request->contact_id,
+                    'user_id' => auth()->user()->id,
                     'warehouse_id' => auth()->user()->role->warehouse_id
                 ]);
             }
@@ -238,6 +246,24 @@ class TransactionController extends Controller
             return response()->json(['success' => true, 'message' => 'Transaction created successfully'], 201);
         } catch (\Exception $e) {
             DB::rollBack();
+            Log::error("Error creating transaction: " . $e->getMessage());
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+        }
+    }
+
+    public function updateTrxStatus(Request $request)
+    {
+        DB::beginTransaction();
+        try {
+            $transaction = Transaction::find($request->id);
+            $transaction->status = $request->status;
+            $transaction->save();
+
+            DB::commit();
+            return response()->json(['success' => true, 'message' => 'Transaction status updated successfully'], 201);
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error("Error updating transaction status: " . $e->getMessage());
             return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
         }
     }
@@ -248,27 +274,13 @@ class TransactionController extends Controller
         $endDate = $endDate ? Carbon::parse($endDate)->endOfDay() : Carbon::now()->endOfDay();
 
         $transactions = Transaction::with(['contact', 'warehouse'])
-            ->select(
-                'invoice',
-                'transaction_type',
-                'status',
-                'warehouse_id',
-                DB::raw('MAX(date_issued) as date_issued'),
-                DB::raw('SUM(CASE WHEN transaction_type = "Sales" THEN price * quantity ELSE cost * quantity END) as total_value')
-            )
+            ->when($warehouse !== "all", function ($query) use ($warehouse) {
+                $query->where('warehouse_id', $warehouse);
+            })
             ->whereBetween('date_issued', [$startDate, $endDate])
-            ->when(
-                $request->search,
-                fn($q) =>
-                $q->where('invoice', 'like', '%' . $request->search . '%')
-            )
-            ->when(
-                $warehouse,
-                fn($q, $warehouse_id) =>
-                $q->where('warehouse_id', $warehouse_id)
-            )
-            ->groupBy('invoice', 'transaction_type', 'status', 'warehouse_id')
-            ->orderByDesc(DB::raw('MAX(date_issued)'))
+            ->when($request->invoice, function ($query) use ($request) {
+                $query->where('invoice', 'like', '%' . $request->invoice . '%');
+            })
             ->paginate(10);
 
         return new DataResource($transactions, true, "Successfully fetched transactions");
@@ -276,7 +288,7 @@ class TransactionController extends Controller
 
     public function getTrxByInvoice($invoice)
     {
-        $transactions = Transaction::with(['product', 'contact', 'warehouse'])->where('invoice', $invoice)->get();
+        $transactions = Transaction::with(['contact', 'warehouse', 'stock_movements.product'])->where('invoice', $invoice)->first();
         return new DataResource($transactions, true, "Successfully fetched transactions");
     }
 }

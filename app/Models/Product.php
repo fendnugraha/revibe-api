@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Database\Eloquent\Model;
 
 class Product extends Model
@@ -18,22 +19,22 @@ class Product extends Model
     {
         static::creating(function ($product) {
             if (!$product->code) {
-                $product->code = self::generateProductCode($product->category);
+                $product->code = self::generateProductCode($product->category_id);
             }
         });
     }
 
-    public static function generateProductCode(string $category): string
+    public static function generateProductCode(int $category): string
     {
-        $categoryModel = ProductCategory::where('name', $category)->firstOrFail();
+        $categoryModel = ProductCategory::find($category);
 
-        $lastCode = Product::where('category', $category)
+        $lastCode = Product::where('category_id', $category)
             ->selectRaw('MAX(RIGHT(code, 4)) AS lastCode')
             ->value('lastCode');
 
         $nextCode = str_pad((int) $lastCode + 1, 4, '0', STR_PAD_LEFT);
 
-        return $categoryModel->prefix . $nextCode;
+        return $categoryModel->code_prefix . $nextCode;
     }
 
     public static function updateStock($id, $newQty, $warehouse_id)
@@ -61,33 +62,22 @@ class Product extends Model
             return false; // Exit if the product does not exist
         }
 
-        $transaction = Transaction::select(
-            'product_id',
-            DB::raw('SUM(cost * quantity) as totalCost'),
-            DB::raw('SUM(quantity) as totalQuantity')
-        )
-            ->where('product_id', $product->id)
+        $transaction = StockMovement::where('product_id', $product->id)
+            ->selectRaw('SUM(quantity) as totalQuantity, SUM(cost*quantity) as totalCost')
             ->where('transaction_type', 'Purchase')
-            ->when(!empty($condition), function ($query) use ($condition) {
-                $query->where($condition);
-            })
-            ->groupBy('product_id')
             ->first();
-
-        if (!$transaction || $transaction->totalQuantity == 0) {
-            // No transactions or zero quantity
-            Product::where('id', $product->id)->update([
-                'cost' => 0, // Set cost to 0 or leave unchanged based on requirements
-            ]);
-            return false;
-        }
 
         // Calculate new cost
         $newCost = $transaction->totalCost / $transaction->totalQuantity;
+        Log::info('Hitung ulang cost rata-rata', [
+            'newCost' => $newCost,
+            'totalCost' => $transaction->totalCost,
+            'totalQuantity' => $transaction->totalQuantity,
+        ]);
 
         // Update the product's cost
         Product::where('id', $product->id)->update([
-            'cost' => $newCost,
+            'current_cost' => $newCost,
         ]);
 
         return true;
@@ -145,5 +135,10 @@ class Product extends Model
     public function warehouseStock()
     {
         return $this->hasMany(WarehouseStock::class);
+    }
+
+    public function stock_movements()
+    {
+        return $this->hasMany(StockMovement::class);
     }
 }

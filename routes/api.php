@@ -1,9 +1,11 @@
 <?php
 
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\UserController;
 use App\Http\Controllers\ContactController;
+use App\Http\Controllers\FinanceController;
 use App\Http\Controllers\ProductController;
 use App\Http\Controllers\WarehouseController;
 use App\Http\Controllers\TransactionController;
@@ -29,6 +31,7 @@ Route::group(['middleware' => ['auth:sanctum']], function () {
     Route::apiResource('product-categories', ProductCategoryController::class);
     Route::get('get-all-products', [ProductController::class, 'getAllProducts']);
     Route::get('get-all-products-by-warehouse/{warehouse}/{endDate}', [ProductController::class, 'getAllProductsByWarehouse']);
+    Route::post('stock-adjustment', [ProductController::class, 'stockAdjustment']);
     //end product area
 
     //account area
@@ -38,6 +41,7 @@ Route::group(['middleware' => ['auth:sanctum']], function () {
     Route::get('get-account-by-account-id', [ChartOfAccountController::class, 'getAccountByAccountId']);
     Route::get('balance-sheet-report/{startDate}/{endDate}', [ChartOfAccountController::class, 'balanceSheetReport']);
     Route::get('profit-loss-report/{startDate}/{endDate}', [ChartOfAccountController::class, 'profitLossReport']);
+    Route::get('balance-sheet-report/{endDate}', [ChartOfAccountController::class, 'balanceSheetReport']);
     Route::get('cash-flow-report/{startDate}/{endDate}', [ChartOfAccountController::class, 'cashFlowReport']);
     //end account area
 
@@ -67,6 +71,17 @@ Route::group(['middleware' => ['auth:sanctum']], function () {
     Route::apiResource('transactions', TransactionController::class);
     Route::get('get-trx-by-warehouse/{warehouse}/{startDate}/{endDate}', [TransactionController::class, 'getTrxByWarehouse']);
     Route::post('purchase-order', [TransactionController::class, 'purchaseOrder']);
+    Route::put('update-trx-status', [TransactionController::class, 'updateTrxStatus']);
     Route::get('get-trx-by-invoice/{invoice}', [TransactionController::class, 'getTrxByInvoice']);
     //end transactions
+
+    //finance
+    Route::apiResource('finance', FinanceController::class);
+    Route::get('finance-by-type/{contact}/{financeType}', [FinanceController::class, 'getFinanceByType']);
+    Route::get('get-finance-by-contact-id/{contactId}', [FinanceController::class, 'getFinanceByContactId']);
+    Route::post('store-payment', [FinanceController::class, 'storePayment']);
+    Route::get('get-finance-data/{invoice}', [FinanceController::class, 'getFinanceData']);
+    Route::get('get-finance-yearly/{year}', [FinanceController::class, 'getFinanceYearly']);
+
+    //end finance
 });
