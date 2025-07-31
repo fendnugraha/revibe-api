@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Database\Eloquent\Model;
 
 class Journal extends Model
@@ -239,8 +240,9 @@ class Journal extends Model
 
     public static function cashflowCount($startDate, $endDate)
     {
-        $startDate = $startDate ? Carbon::parse($startDate)->startOfDay() : now()->startOfDay();
-        $endDate = $endDate ? Carbon::parse($endDate)->endOfDay() : now()->endOfDay();
+        // $startDate = $startDate ? Carbon::parse($startDate)->startOfDay() : now()->startOfDay();
+        // $endDate = $endDate ? Carbon::parse($endDate)->endOfDay() : now()->endOfDay();
+        Log::info($endDate);
 
         $accounts = ChartOfAccount::with(['entriesWithJournal' => function ($query) use ($startDate, $endDate) {
             $query->whereBetween('journals.date_issued', [$startDate, $endDate]);
