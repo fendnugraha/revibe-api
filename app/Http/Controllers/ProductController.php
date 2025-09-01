@@ -12,6 +12,7 @@ use App\Models\WarehouseStock;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use App\Http\Resources\DataResource;
+use App\Models\ChartOfAccount;
 
 class ProductController extends Controller
 {
@@ -171,7 +172,6 @@ class ProductController extends Controller
 
     public function stockAdjustment(Request $request)
     {
-        $product = Product::find($request->product_id);
         $request->validate([
             'product_id' => 'required|exists:products,id',
             'quantity' => 'required|numeric',
@@ -187,58 +187,95 @@ class ProductController extends Controller
             ]);
         }
 
-        $newInvoice = Journal::adjustment_journal();
-        DB::beginTransaction();
+        $product = Product::findOrFail($request->product_id);
 
+        DB::beginTransaction();
         try {
+            // jika initial stock lama ada -> hapus dulu
+            if ($request->is_initial) {
+                $initProduct = StockMovement::where('product_id', $request->product_id)
+                    ->where('is_initial', true)
+                    ->where('warehouse_id', $request->warehouse_id)
+                    ->first();
+
+                if ($initProduct && $initProduct->transaction) {
+                    $oldTransaction = $initProduct->transaction;
+
+                    // hapus journal lama
+                    Journal::where('invoice', $oldTransaction->invoice)->delete();
+
+                    // hapus stock movement lama
+                    $oldTransaction->stock_movements()->delete();
+
+                    // hapus transaksi lama
+                    $oldTransaction->delete();
+                }
+            }
+
+            // buat transaksi baru
+            $newInvoice = Journal::adjustment_journal();
+
             $transaction = Transaction::create([
-                'date_issued' => $request->date,
+                'date_issued' => $request->date ?? now(),
                 'invoice' => $newInvoice,
                 'transaction_type' => "Adjustment",
                 'status' => "Active",
                 'contact_id' => $request->contact_id ?? 1,
-                'user_id' => auth()->user()->id,
+                'user_id' => auth()->id(),
                 'warehouse_id' => $request->warehouse_id,
             ]);
 
             $journal = Journal::create([
-                'invoice' => $newInvoice,  // Menggunakan metode statis untuk invoice
+                'invoice' => $newInvoice,
                 'date_issued' => $request->date ?? now(),
                 'transaction_type' => 'Adjustment',
-                'description' => 'Penyesuaian Stok. Note: ' . $request->description,
-                'user_id' => auth()->user()->id,
+                'description' => 'Penyesuaian Stok. Note: ' . ($request->description ?? ''),
+                'user_id' => auth()->id(),
                 'warehouse_id' => $request->warehouse_id,
             ]);
 
-            $journal->entries()->createMany([
-                [
-                    'journal_id' => $journal->id,
-                    'chart_of_account_id' => $request->adjustmentType == "in" ? 10 : $request->account_id,
-                    'debit' => $request->quantity * $request->cost,
-                    'credit' => 0
-                ],
-                [
-                    'journal_id' => $journal->id,
-                    'chart_of_account_id' => $request->adjustmentType == "in" ? ($request->is_initial ? 13 : $request->account_id) : 10,
-                    'debit' => 0,
-                    'credit' => $request->quantity * $request->cost
-                ],
-            ]);
-
             if ($request->is_initial) {
-                $product->update([
-                    'init_cost' => $request->cost
+                // jurnal initial stock
+                $journal->entries()->createMany([
+                    [
+                        'chart_of_account_id' => ChartOfAccount::INVENTORY,
+                        'debit' => $request->quantity * $request->cost,
+                        'credit' => 0
+                    ],
+                    [
+                        'chart_of_account_id' => ChartOfAccount::MODAL_EQUITY,
+                        'debit' => 0,
+                        'credit' => $request->quantity * $request->cost
+                    ],
                 ]);
 
-                //warehouse stock
-                WarehouseStock::updateOrCreate([
+                $product->update(['init_cost' => $request->cost]);
+
+                $transaction->stock_movements()->create([
+                    'date_issued' => $request->date ?? now(),
                     'product_id' => $request->product_id,
-                    'warehouse_id' => $request->warehouse_id
-                ], [
-                    'init_stock' => $request->quantity,
+                    'quantity' => $request->quantity,
+                    'cost' => $request->cost,
+                    'price' => 0,
+                    'is_initial' => true,
+                    'warehouse_id' => $request->warehouse_id,
+                    'transaction_type' => "Adjustment",
                 ]);
             } else {
-                //stock movement
+                // jurnal adjustment biasa
+                $journal->entries()->createMany([
+                    [
+                        'chart_of_account_id' => $request->adjustmentType == "in" ? ChartOfAccount::INVENTORY : $request->account_id,
+                        'debit' => $request->quantity * $request->cost,
+                        'credit' => 0
+                    ],
+                    [
+                        'chart_of_account_id' => $request->adjustmentType == "in" ? $request->account_id : ChartOfAccount::INVENTORY,
+                        'debit' => 0,
+                        'credit' => $request->quantity * $request->cost
+                    ],
+                ]);
+
                 $transaction->stock_movements()->create([
                     'date_issued' => $request->date,
                     'product_id' => $request->product_id,
@@ -249,10 +286,18 @@ class ProductController extends Controller
                     'transaction_type' => "Adjustment",
                 ]);
             }
+
+            $newCost = Product::updateCost($product->id);
+
             DB::commit();
             return response()->json([
                 'success' => true,
-                'message' => 'Stock adjustment successful'
+                'message' => 'Stock adjustment successful',
+                'data' => [
+                    'product_id' => $product->id,
+                    'new_cost' => $newCost,
+                    'warehouse_id' => $request->warehouse_id,
+                ]
             ]);
         } catch (\Throwable $th) {
             DB::rollBack();

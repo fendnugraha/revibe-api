@@ -59,29 +59,37 @@ class Product extends Model
         $product = Product::find($id);
 
         if (!$product) {
-            return false; // Exit if the product does not exist
+            return false;
         }
 
-        $transaction = StockMovement::where('product_id', $product->id)
-            ->selectRaw('SUM(quantity) as totalQuantity, SUM(cost*quantity) as totalCost')
-            ->where('transaction_type', 'Purchase')
-            ->first();
+        $query = StockMovement::where('product_id', $product->id)
+            ->selectRaw('SUM(quantity) as totalQuantity, SUM(cost * quantity) as totalCost')
+            ->whereIn('transaction_type', ['Purchase', 'Adjustment', 'OpeningBalance']);
 
-        // Calculate new cost
-        $newCost = $transaction->totalCost / $transaction->totalQuantity;
+        if (!empty($condition)) {
+            $query->where($condition);
+        }
+
+        $transaction = $query->first();
+
+        $totalQuantity = $transaction->totalQuantity ?? 0;
+        $totalCost     = $transaction->totalCost ?? 0;
+
+        $newCost = ($totalQuantity > 0) ? ($totalCost / $totalQuantity) : 0;
+
         Log::info('Hitung ulang cost rata-rata', [
+            'totalCost' => $totalCost,
+            'totalQuantity' => $totalQuantity,
             'newCost' => $newCost,
-            'totalCost' => $transaction->totalCost,
-            'totalQuantity' => $transaction->totalQuantity,
         ]);
 
-        // Update the product's cost
-        Product::where('id', $product->id)->update([
+        $product->update([
             'current_cost' => $newCost,
         ]);
 
-        return true;
+        return $newCost;
     }
+
 
 
     public static function updateCostAndStock($id, $newQty, $newStock, $newCost, $warehouse_id)

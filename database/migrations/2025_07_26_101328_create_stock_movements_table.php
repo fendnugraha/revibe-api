@@ -21,6 +21,7 @@ return new class extends Migration
             $table->integer('quantity');
             $table->decimal('cost', 15, 2);
             $table->decimal('price', 15, 2);
+            $table->boolean('is_initial')->default(false);
 
             $table->enum('transaction_type', ['Purchase', 'Sales', 'Order', 'Adjustment', 'Return', 'Pending', 'Cancelled'])
                 ->default('Pending')

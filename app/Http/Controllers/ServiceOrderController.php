@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use Carbon\Carbon;
 use App\Models\Contact;
 use App\Models\Finance;
 use App\Models\Journal;
@@ -20,15 +21,21 @@ class ServiceOrderController extends Controller
      */
     public function index(Request $request)
     {
+        $startDate = $request->start_date ? Carbon::parse($request->start_date)->startOfDay() : Carbon::now()->startOfDay();
+        $endDate = $request->end_date ? Carbon::parse($request->end_date)->endOfDay() : Carbon::now()->endOfDay();
+
         $orders = ServiceOrder::with(['contact', 'user', 'warehouse', 'technician'])
-            ->where('order_number', 'like', '%' . $request->search . '%')
-            ->orWhere('phone_type', 'like', '%' . $request->search . '%')
-            ->orWhereHas('contact', function ($query) use ($request) {
-                $query->where('name', 'like', '%' . $request->search . '%')
-                    ->orWhere('phone_number', 'like', '%' . $request->search . '%');
+            ->whereBetween('date_issued', [$startDate, $endDate])
+            ->where(function ($query) use ($request) {
+                $query->where('order_number', 'like', '%' . $request->search . '%')
+                    ->orWhere('phone_type', 'like', '%' . $request->search . '%')
+                    ->orWhereHas('contact', function ($q) use ($request) {
+                        $q->where('name', 'like', '%' . $request->search . '%')
+                            ->orWhere('phone_number', 'like', '%' . $request->search . '%');
+                    });
             })
             ->orderBy('order_number', 'desc')
-            ->paginate(10)
+            ->paginate(5)
             ->onEachSide(0);
 
         return new DataResource($orders, true, "Successfully fetched service orders");
@@ -197,10 +204,9 @@ class ServiceOrderController extends Controller
                         'due_date' => $request->date_issued ?? now()->addDays(30),
                         'invoice' => $order->invoice,
                         'description' => 'Pembayaran Service Order ' . $order->order_number,
-                        'bill_amount' => -$totalPrice,
+                        'bill_amount' => - ($totalPrice + $request->serviceFee - $request->discount),
                         'payment_amount' => 0,
                         'payment_nth' => 0,
-                        'payment_status' => 0,
                         'finance_type' => 'Receivable',
                         'contact_id' => $order->contact->id,
                         'user_id' => auth()->user()->id,
@@ -234,6 +240,40 @@ class ServiceOrderController extends Controller
                         'credit' => 0
                     ]
                 ]);
+
+                if ($request->serviceFee) {
+                    $journal->entries()->createMany([
+                        [
+                            'journal_id' => $journal->id,
+                            'chart_of_account_id' => 17,
+                            'debit' => 0,
+                            'credit' => $request->serviceFee
+                        ],
+                        [
+                            'journal_id' => $journal->id,
+                            'chart_of_account_id' => $request->paymentAccountID,
+                            'debit' => $request->serviceFee,
+                            'credit' => 0
+                        ]
+                    ]);
+                }
+
+                if ($request->discount) {
+                    $journal->entries()->createMany([
+                        [
+                            'journal_id' => $journal->id,
+                            'chart_of_account_id' => $request->paymentAccountID,
+                            'debit' => 0,
+                            'credit' => $request->discount
+                        ],
+                        [
+                            'journal_id' => $journal->id,
+                            'chart_of_account_id' => 44,
+                            'debit' => $request->discount,
+                            'credit' => 0
+                        ]
+                    ]);
+                }
 
                 $order->transaction()->update([
                     'transaction_type' => 'Sales'
@@ -274,18 +314,18 @@ class ServiceOrderController extends Controller
         $warehouseId = auth()->user()->role->warehouse_id;
         $userId = auth()->user()->id;
 
-        $transaction = Transaction::create([
-            'date_issued' => now(),
-            'invoice' => $newinvoice,
-            'transaction_type' => "Order",
-            'status' => "Active",
-            'contact_id' => $request->contact_id ?? 1,
-            'warehouse_id' => $warehouseId,
-            'user_id' => $userId
-        ]);
-
         DB::beginTransaction();
         try {
+            $transaction = Transaction::create([
+                'date_issued' => now(),
+                'invoice' => $newinvoice,
+                'transaction_type' => "Order",
+                'status' => "Active",
+                'contact_id' => $request->contact_id ?? 1,
+                'warehouse_id' => $warehouseId,
+                'user_id' => $userId
+            ]);
+
             foreach ($request->parts as $item) {
                 $cost = Product::find($item['id'])->current_cost;
 

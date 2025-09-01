@@ -20,6 +20,16 @@ class ChartOfAccount extends Model
         'st_balance' => 'integer',
     ];
 
+    const MODAL_EQUITY = 13;
+    const INVENTORY = 10;
+    const INCOME_FROM_SALES = 16;
+    const PURCHASE_DISCOUNT = 18;
+    const COST_OF_GOODS_SOLD = 21;
+    const SALES_DISCOUNT = 44;
+    const DEFAULT_RECEIVABLE = 7;
+    const DEFAULT_PAYABLE = 11;
+    const SHIPPING_EXPENSE = 42;
+
     public function entries()
     {
         return $this->hasMany(JournalEntry::class);
