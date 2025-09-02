@@ -18,7 +18,6 @@ return new class extends Migration
             $table->string('description', 160)->nullable();
 
             // Metadata (boleh disesuaikan)
-            $table->string('transaction_type', 60)->nullable();
             $table->string('finance_type', 30)->nullable();
             $table->integer('payment_nth')->nullable()->default(0);
             $table->foreignId('user_id')->constrained()->onDelete('restrict');

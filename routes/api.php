@@ -32,6 +32,8 @@ Route::group(['middleware' => ['auth:sanctum']], function () {
     Route::get('get-all-products', [ProductController::class, 'getAllProducts']);
     Route::get('get-all-products-by-warehouse/{warehouse}/{endDate}', [ProductController::class, 'getAllProductsByWarehouse']);
     Route::post('stock-adjustment', [ProductController::class, 'stockAdjustment']);
+    Route::post('stock-reversal', [ProductController::class, 'stockReversal']);
+
     //end product area
 
     //account area

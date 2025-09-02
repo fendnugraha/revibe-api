@@ -12,6 +12,7 @@ use Illuminate\Validation\Rule;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use App\Http\Resources\DataResource;
+use App\Models\ChartOfAccount;
 
 class TransactionController extends Controller
 {
@@ -199,7 +200,7 @@ class TransactionController extends Controller
                 ],
                 [
                     'journal_id' => $journal->id,
-                    'chart_of_account_id' => 10,
+                    'chart_of_account_id' => ChartOfAccount::INVENTORY,
                     'debit' => $totalCost,
                     'credit' => 0
                 ],
@@ -209,7 +210,7 @@ class TransactionController extends Controller
                 $journal->entries()->createMany([
                     [
                         'journal_id' => $journal->id,
-                        'chart_of_account_id' => 40,
+                        'chart_of_account_id' => ChartOfAccount::SHIPPING_EXPENSE,
                         'debit' => $request->shipping_cost,
                         'credit' => 0
                     ],
@@ -360,19 +361,19 @@ class TransactionController extends Controller
                 ],
                 [
                     'journal_id' => $journal->id,
-                    'chart_of_account_id' => 16,
+                    'chart_of_account_id' => ChartOfAccount::INCOME_FROM_SALES,
                     'debit' => 0,
                     'credit' => $totalPrice
                 ],
                 [
                     'journal_id' => $journal->id,
-                    'chart_of_account_id' => 10,
+                    'chart_of_account_id' => ChartOfAccount::INVENTORY,
                     'debit' => 0,
                     'credit' => $totalCost
                 ],
                 [
                     'journal_id' => $journal->id,
-                    'chart_of_account_id' => 21,
+                    'chart_of_account_id' => ChartOfAccount::COST_OF_GOODS_SOLD,
                     'debit' => $totalCost,
                     'credit' => 0
                 ]

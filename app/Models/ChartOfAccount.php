@@ -28,7 +28,7 @@ class ChartOfAccount extends Model
     const SALES_DISCOUNT = 44;
     const DEFAULT_RECEIVABLE = 7;
     const DEFAULT_PAYABLE = 11;
-    const SHIPPING_EXPENSE = 42;
+    const SHIPPING_EXPENSE = 40;
 
     public function entries()
     {

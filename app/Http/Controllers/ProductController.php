@@ -307,4 +307,128 @@ class ProductController extends Controller
             ], 400);
         }
     }
+
+    public function stockReversal(Request $request)
+    {
+        $request->validate([
+            'date' => 'required|date',
+            'product_id' => 'required|exists:products,id',
+            'quantity' => 'required|numeric',
+            'warehouse_id' => 'required|exists:warehouses,id',
+            'cost' => 'required|numeric',
+            'account_id' => 'required|exists:chart_of_accounts,id',
+        ]);
+
+        if ($request->transaction_type == "Sales") {
+            $request->validate([
+                'price' => 'required|numeric',
+            ]);
+
+            $quantity = $request->quantity;
+            $account_id = ChartOfAccount::INVENTORY;
+        } else {
+            $quantity = -$request->quantity;
+            $account_id = $request->account_id;
+        }
+
+        $product = Product::findOrFail($request->product_id);
+
+        DB::beginTransaction();
+        try {
+            $newInvoice = Journal::adjustment_journal();
+
+            $transaction = Transaction::create([
+                'invoice' => $newInvoice,
+                'date_issued' => $request->date ?? now(),
+                'transaction_type' => 'Return',
+                'status' => "Active",
+                'contact_id' => $request->contact_id ?? 1,
+                'user_id' => auth()->id(),
+                'warehouse_id' => $request->warehouse_id,
+            ]);
+
+            $journal = Journal::create([
+                'invoice' => $newInvoice,
+                'date_issued' => $request->date ?? now(),
+                'transaction_type' => 'Return',
+                'status' => "Active",
+                'description' => 'Retur Stok ' . $product->name . '. Note: ' . ($request->description ?? ''),
+                'contact_id' => $request->contact_id ?? 1,
+                'user_id' => auth()->id(),
+                'warehouse_id' => $request->warehouse_id,
+            ]);
+
+            if ($request->transaction_type == "Sales") {
+                $journal->entries()->createMany([
+                    [
+                        'journal_id' => $journal->id,
+                        'chart_of_account_id' => $request->account_id,
+                        'debit' => 0,
+                        'credit' => $request->quantity * $request->price
+                    ],
+                    [
+                        'journal_id' => $journal->id,
+                        'chart_of_account_id' => ChartOfAccount::INCOME_FROM_SALES,
+                        'debit' => $request->quantity * $request->price,
+                        'credit' => 0
+                    ],
+                    [
+                        'journal_id' => $journal->id,
+                        'chart_of_account_id' => ChartOfAccount::INVENTORY,
+                        'debit' => $request->quantity * $request->cost,
+                        'credit' => 0
+                    ],
+                    [
+                        'journal_id' => $journal->id,
+                        'chart_of_account_id' => ChartOfAccount::COST_OF_GOODS_SOLD,
+                        'debit' => 0,
+                        'credit' => $request->quantity * $request->cost
+                    ]
+                ]);
+            } else {
+                $journal->entries()->createMany([
+                    [
+                        'journal_id' => $journal->id,
+                        'chart_of_account_id' => $account_id,
+                        'debit' => $request->quantity * $request->cost,
+                        'credit' => 0
+                    ],
+                    [
+                        'journal_id' => $journal->id,
+                        'chart_of_account_id' => ChartOfAccount::INVENTORY,
+                        'debit' => 0,
+                        'credit' => $request->quantity * $request->cost
+                    ]
+                ]);
+            }
+
+            $transaction->stock_movements()->create([
+                'date_issued' => $request->date,
+                'product_id' => $request->product_id,
+                'quantity' => $quantity,
+                'cost' => $request->cost,
+                'price' => $request->price,
+                'warehouse_id' => $request->warehouse_id,
+                'transaction_type' => "Return",
+            ]);
+
+            Product::updateCost($product->id);
+
+            DB::commit();
+            return response()->json([
+                'success' => true,
+                'message' => 'Stock reversal successful',
+                'data' => [
+                    'product_id' => $product->id,
+                    'warehouse_id' => $request->warehouse_id,
+                ]
+            ]);
+        } catch (\Throwable $th) {
+            DB::rollBack();
+            return response()->json([
+                'success' => false,
+                'message' => $th->getMessage()
+            ], 400);
+        }
+    }
 }
