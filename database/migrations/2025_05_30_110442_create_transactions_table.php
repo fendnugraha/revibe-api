@@ -21,7 +21,7 @@ return new class extends Migration
             $table->foreignId('warehouse_id')->constrained('warehouses')->onDelete('restrict');
             $table->foreignId('user_id')->constrained('users')->onDelete('restrict');
 
-            $table->enum('status', ['Active', 'Cancelled', 'On Delivery', 'Confirmed', 'Void'])->default('Active')->index(); // 1: active, 0: cancelled
+            $table->enum('status', ['Cancelled', 'On Delivery', 'Confirmed', 'Void'])->default('Confirmed')->index(); // 1: active, 0: cancelled
             $table->string('serial_number', 255)->nullable();
             $table->enum('payment_method', ['Cash/Bank Transfer', 'Credit', 'Unpaid'])->default('Unpaid');
             $table->timestamps();

@@ -185,7 +185,6 @@ class TransactionController extends Controller
             $journal = Journal::create([
                 'invoice' => $newinvoice,  // Menggunakan metode statis untuk invoice
                 'date_issued' => $request->date_issued ?? now(),
-                'transaction_type' => 'Purchase',
                 'description' => 'Pembelian Barang',
                 'user_id' => auth()->user()->id,
                 'warehouse_id' => auth()->user()->role->warehouse_id
@@ -287,7 +286,6 @@ class TransactionController extends Controller
             $transaction = Transaction::create([
                 'date_issued' => $request->date_issued,
                 'invoice' => $newinvoice,
-                'transaction_type' => "Sales",
                 'status' => "Confirmed",
                 'contact_id' => $request->contact_id ?? 1,
                 'payment_method' => $request->paymentMethod == "credit" ? "Credit" : "Cash/Bank Transfer",
@@ -329,7 +327,6 @@ class TransactionController extends Controller
             $journal = Journal::create([
                 'invoice' => $newinvoice,  // Menggunakan metode statis untuk invoice
                 'date_issued' => $request->date_issued ?? now(),
-                'transaction_type' => 'Sales',
                 'description' => 'Penjualan Barang',
                 'finance_type' => $request->paymentMethod == 'credit' ? 'Receivable' : null,
                 'user_id' => auth()->user()->id,

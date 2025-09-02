@@ -316,15 +316,19 @@ class ServiceOrderController extends Controller
 
         DB::beginTransaction();
         try {
-            $transaction = Transaction::create([
-                'date_issued' => now(),
-                'invoice' => $newinvoice,
-                'transaction_type' => "Order",
-                'status' => "Active",
-                'contact_id' => $request->contact_id ?? 1,
-                'warehouse_id' => $warehouseId,
-                'user_id' => $userId
-            ]);
+            if ($transactionExists) {
+                $transaction = Transaction::where('invoice', $order->invoice)->first();
+            } else {
+                $transaction = Transaction::create([
+                    'date_issued' => now(),
+                    'invoice' => $newinvoice,
+                    'transaction_type' => "Order",
+                    'status' => "Confirmed",
+                    'contact_id' => $order->contact->id ?? 1,
+                    'warehouse_id' => $warehouseId,
+                    'user_id' => $userId
+                ]);
+            }
 
             foreach ($request->parts as $item) {
                 $cost = Product::find($item['id'])->current_cost;
